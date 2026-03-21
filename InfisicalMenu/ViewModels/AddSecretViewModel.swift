@@ -12,67 +12,102 @@ final class AddSecretViewModel: ObservableObject {
     // MARK: - User Selections
 
     @Published var selectedProject: InfisicalProject?
-    @Published var selectedEnvironment: InfisicalEnvironment?
+    @Published var selectedEnvironmentIds: Set<String> = []
     @Published var selectedTagIds: Set<String> = []
-    @Published var secretPath: String = "/"
 
     // MARK: - Form Fields
 
     @Published var key: String = ""
     @Published var value: String = ""
     @Published var comment: String = ""
+    @Published var newTagName: String = ""
 
     // MARK: - UI State
 
     @Published var isLoadingProjects: Bool = false
     @Published var isLoadingTags: Bool = false
+    @Published var isCreatingTag: Bool = false
     @Published var isCreating: Bool = false
-    @Published var showAdvanced: Bool = false
     @Published var errorMessage: String?
-    @Published var showSuccess: Bool = false
 
     // MARK: - Computed
 
     var isValid: Bool {
-        !key.isEmpty && !value.isEmpty && selectedProject != nil && selectedEnvironment != nil
+        !key.isEmpty && !value.isEmpty && selectedProject != nil && !selectedEnvironmentIds.isEmpty
     }
 
-    // MARK: - Load Initial Data
+    var selectedEnvironments: [InfisicalEnvironment] {
+        environments.filter { selectedEnvironmentIds.contains($0.id) }
+    }
 
-    /// Fetches orgs → projects and pre-selects from current AppConfiguration
+    // MARK: - Load Initial Data (cache-first, no loaders)
+
     func loadInitialData() async {
-        isLoadingProjects = true
         errorMessage = nil
 
-        do {
-            let orgs = try await InfisicalCLIService.fetchOrganizations()
-            guard let org = orgs.first else {
-                errorMessage = "No organizations found"
-                isLoadingProjects = false
-                return
-            }
+        // 1. Use cached projects instantly
+        let cached = ProjectCache.shared.cachedProjects
+        if !cached.isEmpty {
+            projects = cached
+            preSelectFromConfig()
 
-            projects = try await InfisicalCLIService.fetchProjects(orgId: org.id)
-
-            // Pre-select from current configuration
-            if let config = AppConfiguration.load() {
-                selectedProject = projects.first(where: { $0.id == config.projectId })
-                if let project = selectedProject {
-                    environments = project.environments
-                    selectedEnvironment = environments.first(where: { $0.slug == config.environment })
-                    secretPath = config.secretPath
+            // Load cached tags instantly
+            if let projectId = selectedProject?.id {
+                let cachedTags = ProjectCache.shared.cachedTags(for: projectId)
+                if !cachedTags.isEmpty {
+                    tags = cachedTags
                 }
             }
 
-            isLoadingProjects = false
-
-            // Fetch tags for the selected project
-            if selectedProject != nil {
-                await fetchTags()
+            // Refresh both in background
+            Task {
+                let fresh = await ProjectCache.shared.fetchProjects()
+                if fresh != projects {
+                    projects = fresh
+                    if selectedProject == nil || !projects.contains(where: { $0.id == selectedProject?.id }) {
+                        preSelectFromConfig()
+                    }
+                }
             }
-        } catch {
-            errorMessage = "Failed to load projects: \(error.localizedDescription)"
-            isLoadingProjects = false
+            if let projectId = selectedProject?.id {
+                Task {
+                    let freshTags = await ProjectCache.shared.fetchTags(for: projectId)
+                    if freshTags != tags {
+                        tags = freshTags
+                    }
+                }
+            }
+            return
+        }
+
+        // 2. No cache — show loader for first load only
+        isLoadingProjects = true
+        let fetched = await ProjectCache.shared.fetchProjects()
+        projects = fetched
+        preSelectFromConfig()
+        isLoadingProjects = false
+
+        if projects.isEmpty {
+            errorMessage = "No projects found"
+            return
+        }
+
+        // Fetch tags (with loader since first load)
+        if let projectId = selectedProject?.id {
+            isLoadingTags = true
+            tags = await ProjectCache.shared.fetchTags(for: projectId)
+            isLoadingTags = false
+        }
+    }
+
+    private func preSelectFromConfig() {
+        guard let config = AppConfiguration.load() else { return }
+        selectedProject = projects.first(where: { $0.id == config.projectId })
+        if let project = selectedProject {
+            environments = project.environments
+            if let env = environments.first(where: { $0.slug == config.environment }) {
+                selectedEnvironmentIds = [env.id]
+            }
         }
     }
 
@@ -81,46 +116,95 @@ final class AddSecretViewModel: ObservableObject {
     func onProjectSelected() {
         guard let project = selectedProject else {
             environments = []
-            selectedEnvironment = nil
+            selectedEnvironmentIds = []
             tags = []
             selectedTagIds = []
             return
         }
 
         environments = project.environments
-        selectedEnvironment = environments.first
+        if let first = environments.first {
+            selectedEnvironmentIds = [first.id]
+        }
         selectedTagIds = []
 
+        // Load cached tags instantly, refresh in background
+        let cachedTags = ProjectCache.shared.cachedTags(for: project.id)
+        tags = cachedTags
+
+        if cachedTags.isEmpty {
+            isLoadingTags = true
+        }
         Task {
-            await fetchTags()
+            let fresh = await ProjectCache.shared.fetchTags(for: project.id)
+            tags = fresh
+            isLoadingTags = false
         }
     }
 
-    // MARK: - Fetch Tags
+    // MARK: - Environment Toggle
+
+    func toggleEnvironment(_ env: InfisicalEnvironment) {
+        if selectedEnvironmentIds.contains(env.id) {
+            if selectedEnvironmentIds.count > 1 {
+                selectedEnvironmentIds.remove(env.id)
+            }
+        } else {
+            selectedEnvironmentIds.insert(env.id)
+        }
+    }
+
+    // MARK: - Fetch Tags (unused now, kept for manual refresh)
 
     func fetchTags() async {
         guard let project = selectedProject else {
             tags = []
             return
         }
+        tags = await ProjectCache.shared.fetchTags(for: project.id)
+    }
 
-        isLoadingTags = true
+    // MARK: - Create Tag
+
+    func createTag() async {
+        guard let project = selectedProject else { return }
+        let name = newTagName.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !name.isEmpty else { return }
+
+        // Check duplicate — auto-select if exists
+        if let existing = tags.first(where: { $0.displayName.lowercased() == name.lowercased() }) {
+            selectedTagIds.insert(existing.id)
+            newTagName = ""
+            return
+        }
+
+        isCreatingTag = true
+        errorMessage = nil
+
         do {
             let baseURL = AppConfiguration.load()?.baseURL ?? AppConfiguration.defaultBaseURL
-            tags = try await InfisicalCLIService.fetchTags(projectId: project.id, baseURL: baseURL)
+            let newTag = try await InfisicalCLIService.createTag(
+                name: name,
+                projectId: project.id,
+                baseURL: baseURL
+            )
+            tags.append(newTag)
+            selectedTagIds.insert(newTag.id)
+            newTagName = ""
+            // Update cache
+            ProjectCache.shared.addTag(newTag, for: project.id)
         } catch {
-            // Non-fatal — form still works without tags
-            tags = []
+            errorMessage = error.localizedDescription
         }
-        isLoadingTags = false
+        isCreatingTag = false
     }
 
     // MARK: - Create Secret
 
     func createSecret() async -> Bool {
         guard let project = selectedProject,
-              let env = selectedEnvironment else {
-            errorMessage = "Select a project and environment"
+              !selectedEnvironmentIds.isEmpty else {
+            errorMessage = "Select a project and at least one environment"
             return false
         }
 
@@ -132,18 +216,22 @@ final class AddSecretViewModel: ObservableObject {
         isCreating = true
         errorMessage = nil
 
+        let envsToCreate = selectedEnvironments
+        let baseURL = AppConfiguration.load()?.baseURL ?? AppConfiguration.defaultBaseURL
+
         do {
-            let baseURL = AppConfiguration.load()?.baseURL ?? AppConfiguration.defaultBaseURL
-            try await InfisicalCLIService.createSecretViaAPI(
-                name: key,
-                value: value,
-                comment: comment,
-                tagIds: Array(selectedTagIds),
-                environment: env.slug,
-                projectId: project.id,
-                secretPath: secretPath,
-                baseURL: baseURL
-            )
+            for env in envsToCreate {
+                try await InfisicalCLIService.createSecretViaAPI(
+                    name: key,
+                    value: value,
+                    comment: comment,
+                    tagIds: Array(selectedTagIds),
+                    environment: env.slug,
+                    projectId: project.id,
+                    secretPath: "/",
+                    baseURL: baseURL
+                )
+            }
             isCreating = false
             return true
         } catch {

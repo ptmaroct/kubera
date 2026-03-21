@@ -30,9 +30,12 @@ struct WorkspacesResponse: Codable {
 
 struct InfisicalTag: Codable, Identifiable, Hashable {
     let id: String
-    let name: String
+    let name: String?
     let slug: String
     let color: String?
+
+    /// Display name: use name if available, otherwise slug
+    var displayName: String { name ?? slug }
 }
 
 struct TagsResponse: Codable {

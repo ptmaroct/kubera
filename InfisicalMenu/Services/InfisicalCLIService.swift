@@ -147,15 +147,61 @@ struct InfisicalCLIService {
         return response.workspaces
     }
 
-    /// Fetch tags for a workspace (project) via API
+    /// Fetch tags for a workspace (project) via API (v1 endpoint)
     static func fetchTags(projectId: String, baseURL: String = "https://app.infisical.com") async throws -> [InfisicalTag] {
         guard let token = getToken() else { throw CLIError.notLoggedIn }
-        let url = URL(string: "\(baseURL)/api/v2/workspace/\(projectId)/tags")!
+        let url = URL(string: "\(baseURL)/api/v1/workspace/\(projectId)/tags")!
         var request = URLRequest(url: url)
         request.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
-        let (data, _) = try await URLSession.shared.data(for: request)
-        let response = try JSONDecoder().decode(TagsResponse.self, from: data)
-        return response.workspaceTags
+        let (data, response) = try await URLSession.shared.data(for: request)
+
+        if let httpResponse = response as? HTTPURLResponse, httpResponse.statusCode >= 400 {
+            if let errorJson = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+               let message = errorJson["message"] as? String {
+                throw CLIError.executionFailed(message)
+            }
+            throw CLIError.executionFailed("Failed to fetch tags")
+        }
+
+        let decoded = try JSONDecoder().decode(TagsResponse.self, from: data)
+        return decoded.workspaceTags
+    }
+
+    /// Create a new tag in a workspace via API (v1 endpoint)
+    static func createTag(name: String, projectId: String, color: String = "#F5A524", baseURL: String = "https://app.infisical.com") async throws -> InfisicalTag {
+        guard let token = getToken() else { throw CLIError.notLoggedIn }
+        let url = URL(string: "\(baseURL)/api/v1/workspace/\(projectId)/tags")!
+        var request = URLRequest(url: url)
+        request.httpMethod = "POST"
+        request.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
+        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        request.timeoutInterval = 10
+
+        let slug = name.lowercased()
+            .replacingOccurrences(of: " ", with: "-")
+            .replacingOccurrences(of: "[^a-z0-9\\-]", with: "", options: .regularExpression)
+
+        let body: [String: Any] = [
+            "slug": slug,
+            "color": color
+        ]
+        request.httpBody = try JSONSerialization.data(withJSONObject: body)
+        let (data, response) = try await URLSession.shared.data(for: request)
+
+        if let httpResponse = response as? HTTPURLResponse, httpResponse.statusCode >= 400 {
+            if let errorJson = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+               let message = errorJson["message"] as? String {
+                throw CLIError.executionFailed(message)
+            }
+            throw CLIError.executionFailed("Failed to create tag")
+        }
+
+        // Parse the created tag from response
+        struct CreateTagResponse: Codable {
+            let workspaceTag: InfisicalTag
+        }
+        let tagResponse = try JSONDecoder().decode(CreateTagResponse.self, from: data)
+        return tagResponse.workspaceTag
     }
 
     /// Create a new secret via Infisical REST API (supports comment and tags)

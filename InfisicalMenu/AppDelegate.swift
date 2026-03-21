@@ -62,9 +62,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         menu.addItem(searchItem)
         menu.addItem(NSMenuItem.separator())
 
-        // Secret items
+        // Secret items — show top 5 most-copied when not searching, all matches when searching
         secretMenuItems.removeAll()
-        let filtered = viewModel.filteredSecrets
+        let displaySecrets = viewModel.menubarSecrets
 
         if viewModel.isLoading && viewModel.secrets.isEmpty {
             let loadingItem = NSMenuItem(title: "Loading...", action: nil, keyEquivalent: "")
@@ -74,19 +74,26 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
             let notConfiguredItem = NSMenuItem(title: "Not configured — open Settings", action: #selector(openSettings), keyEquivalent: "")
             notConfiguredItem.target = self
             menu.addItem(notConfiguredItem)
-        } else if filtered.isEmpty {
+        } else if displaySecrets.isEmpty {
             let emptyTitle = viewModel.searchText.isEmpty ? "No secrets found" : "No results for \"\(viewModel.searchText)\""
             let emptyItem = NSMenuItem(title: emptyTitle, action: nil, keyEquivalent: "")
             emptyItem.isEnabled = false
             menu.addItem(emptyItem)
         } else {
-            for (index, secret) in filtered.enumerated() {
+            for (index, secret) in displaySecrets.enumerated() {
                 let item = NSMenuItem(title: secret.key, action: #selector(copySecret(_:)), keyEquivalent: "")
                 item.target = self
                 item.tag = index
                 item.toolTip = "Click to copy value"
                 secretMenuItems.append(item)
                 menu.addItem(item)
+            }
+
+            // Show "N more secrets — search to find" when limited
+            if viewModel.searchText.isEmpty && viewModel.hiddenCount > 0 {
+                let moreItem = NSMenuItem(title: "\(viewModel.hiddenCount) more — type to search", action: nil, keyEquivalent: "")
+                moreItem.isEnabled = false
+                menu.addItem(moreItem)
             }
         }
 
@@ -119,22 +126,23 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
 
     func menuWillOpen(_ menu: NSMenu) {
         viewModel.searchText = ""
+        // Show cached data instantly — no loader
         rebuildMenu()
 
+        // Focus search field
+        DispatchQueue.main.async { [weak self] in
+            self?.searchField?.becomeFirstResponder()
+        }
+
+        // Refresh silently in background
         if viewModel.isConfigured {
             Task {
                 await viewModel.loadSecrets()
                 await MainActor.run {
                     rebuildMenu()
-                    // Restore focus to search field
                     searchField?.becomeFirstResponder()
                 }
             }
-        }
-
-        // Focus search field
-        DispatchQueue.main.async { [weak self] in
-            self?.searchField?.becomeFirstResponder()
         }
     }
 
@@ -152,9 +160,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
 
     @objc private func copySecret(_ sender: NSMenuItem) {
         let index = sender.tag
-        let filtered = viewModel.filteredSecrets
-        guard index >= 0, index < filtered.count else { return }
-        let secret = filtered[index]
+        let displaySecrets = viewModel.menubarSecrets
+        guard index >= 0, index < displaySecrets.count else { return }
+        let secret = displaySecrets[index]
         viewModel.copySecret(secret)
 
         // Brief visual feedback — flash the menubar icon
@@ -173,7 +181,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
             let view = AddSecretView(viewModel: viewModel) { [weak self] in
                 self?.addSecretWindow?.close()
             }
-            addSecretWindow = makeStyledWindow(view: view, width: 480, height: 580)
+            addSecretWindow = makeStyledWindow(view: view, width: 480, height: 540)
         }
         addSecretWindow?.makeKeyAndOrderFront(nil)
         NSApp.activate(ignoringOtherApps: true)
@@ -192,7 +200,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
             let view = SettingsView(viewModel: viewModel) { [weak self] in
                 self?.settingsWindow?.close()
             }
-            settingsWindow = makeStyledWindow(view: view, width: 440, height: 480)
+            settingsWindow = makeStyledWindow(view: view, width: 400, height: 440)
         }
         settingsWindow?.makeKeyAndOrderFront(nil)
         NSApp.activate(ignoringOtherApps: true)

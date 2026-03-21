@@ -48,6 +48,9 @@ struct VaultTextField: View {
     @Binding var text: String
     var isMonospaced: Bool = false
     var isSecure: Bool = false
+    var placeholder: String = ""
+
+    @State private var isRevealed = false
 
     var body: some View {
         VStack(alignment: .leading, spacing: 6) {
@@ -56,16 +59,31 @@ struct VaultTextField: View {
                 .foregroundColor(Color.vault.textSecondary)
                 .tracking(1.2)
 
-            Group {
+            HStack(spacing: 0) {
+                Group {
+                    if isSecure && !isRevealed {
+                        SecureField(placeholder, text: $text)
+                    } else {
+                        TextField(placeholder, text: $text)
+                    }
+                }
+                .font(isMonospaced ? .system(size: 13, design: .monospaced) : .system(size: 13))
+                .foregroundColor(Color.vault.text)
+                .textFieldStyle(.plain)
+
                 if isSecure {
-                    SecureField("", text: $text)
-                } else {
-                    TextField("", text: $text)
+                    Button {
+                        withAnimation(.easeInOut(duration: 0.15)) {
+                            isRevealed.toggle()
+                        }
+                    } label: {
+                        Image(systemName: isRevealed ? "eye.slash.fill" : "eye.fill")
+                            .font(.system(size: 12))
+                            .foregroundColor(isRevealed ? Color.vault.accent : Color.vault.textTertiary)
+                    }
+                    .buttonStyle(.plain)
                 }
             }
-            .font(isMonospaced ? .system(size: 13, design: .monospaced) : .system(size: 13))
-            .foregroundColor(Color.vault.text)
-            .textFieldStyle(.plain)
             .padding(.horizontal, 12)
             .padding(.vertical, 8)
             .background(Color.vault.bg)
@@ -98,23 +116,43 @@ struct VaultPicker<T: Hashable & Identifiable>: View where T: CustomStringConver
                 .foregroundColor(Color.vault.textSecondary)
                 .tracking(1.2)
 
-            Picker("", selection: $selection) {
-                Text("Select...").tag(nil as T?)
+            Menu {
                 ForEach(options) { option in
-                    Text(displayName(option)).tag(option as T?)
+                    Button {
+                        selection = option
+                    } label: {
+                        HStack {
+                            Text(displayName(option))
+                            if selection?.id == option.id {
+                                Spacer()
+                                Image(systemName: "checkmark")
+                            }
+                        }
+                    }
                 }
+            } label: {
+                HStack {
+                    Text(selection.map { displayName($0) } ?? "Select...")
+                        .font(.system(size: 13))
+                        .foregroundColor(selection != nil ? Color.vault.text : Color.vault.textTertiary)
+
+                    Spacer()
+
+                    Image(systemName: "chevron.up.chevron.down")
+                        .font(.system(size: 10, weight: .medium))
+                        .foregroundColor(Color.vault.textTertiary)
+                }
+                .padding(.horizontal, 12)
+                .padding(.vertical, 8)
+                .background(Color.vault.bg)
+                .cornerRadius(8)
+                .overlay(
+                    RoundedRectangle(cornerRadius: 8)
+                        .stroke(Color.vault.border, lineWidth: 1)
+                )
             }
-            .labelsHidden()
-            .pickerStyle(.menu)
-            .padding(.horizontal, 8)
-            .padding(.vertical, 4)
-            .frame(maxWidth: .infinity, alignment: .leading)
-            .background(Color.vault.bg)
-            .cornerRadius(8)
-            .overlay(
-                RoundedRectangle(cornerRadius: 8)
-                    .stroke(Color.vault.border, lineWidth: 1)
-            )
+            .menuStyle(.borderlessButton)
+            .menuIndicator(.hidden)
         }
     }
 }
@@ -314,7 +352,7 @@ extension InfisicalEnvironment: CustomStringConvertible {
 }
 
 extension InfisicalTag: CustomStringConvertible {
-    var description: String { name }
+    var description: String { displayName }
 }
 
 // MARK: - Color Hex Initializer

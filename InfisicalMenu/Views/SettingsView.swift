@@ -11,7 +11,6 @@ struct SettingsView: View {
     @State private var secretPath: String = "/"
     @State private var isLoading = true
     @State private var statusMessage: String?
-    @State private var appeared = false
 
     // Shortcut state
     @State private var shortcutKeyCode: UInt32 = AppConfiguration.defaultShortcutKeyCode
@@ -22,102 +21,200 @@ struct SettingsView: View {
 
     var body: some View {
         ZStack {
-            WindowBackground()
+            // Glass background
+            VisualEffectBlur(material: .hudWindow, blendingMode: .behindWindow)
+                .ignoresSafeArea()
 
             VStack(spacing: 0) {
                 // Header
                 HStack {
-                    VStack(alignment: .leading, spacing: 2) {
-                        Text("Settings")
-                            .font(.system(size: 18, weight: .bold))
-                            .foregroundColor(Color.vault.text)
-                        if let config = AppConfiguration.load(), let name = config.projectName {
-                            Text("Connected to \(name)")
-                                .font(.system(size: 11))
-                                .foregroundColor(Color.vault.textTertiary)
-                        }
-                    }
+                    Text("Settings")
+                        .font(.system(size: 16, weight: .bold))
+                        .foregroundColor(.white.opacity(0.92))
                     Spacer()
-                    Image(systemName: "gearshape.fill")
-                        .font(.system(size: 14))
-                        .foregroundColor(Color.vault.textTertiary)
+                    Button {
+                        stopRecording()
+                        onDismiss()
+                    } label: {
+                        Image(systemName: "xmark.circle.fill")
+                            .font(.system(size: 18))
+                            .foregroundColor(.white.opacity(0.3))
+                    }
+                    .buttonStyle(.plain)
                 }
-                .padding(.horizontal, 28)
-                .padding(.top, 24)
-                .padding(.bottom, 20)
+                .padding(.horizontal, 24)
+                .padding(.top, 20)
+                .padding(.bottom, 16)
 
                 if isLoading {
                     Spacer()
                     ProgressView()
                         .scaleEffect(0.8)
-                    Text("Loading projects...")
+                    Text("Loading...")
                         .font(.system(size: 12))
-                        .foregroundColor(Color.vault.textSecondary)
+                        .foregroundColor(.white.opacity(0.5))
                         .padding(.top, 8)
                     Spacer()
                 } else {
                     ScrollView(.vertical, showsIndicators: false) {
-                        VStack(spacing: 14) {
-                            VaultPicker(
-                                label: "Project",
-                                selection: $selectedProject,
-                                options: projects,
-                                displayName: { $0.name }
-                            )
-                            .onChange(of: selectedProject) { _ in
-                                if let project = selectedProject {
-                                    selectedEnvironment = project.environments.first
-                                }
-                            }
+                        VStack(spacing: 16) {
+                            // Project & Environment card
+                            glassCard {
+                                VStack(spacing: 14) {
+                                    settingsRow(
+                                        icon: "folder.fill",
+                                        label: "Project"
+                                    ) {
+                                        Menu {
+                                            ForEach(projects) { project in
+                                                Button {
+                                                    selectedProject = project
+                                                    selectedEnvironment = project.environments.first
+                                                } label: {
+                                                    HStack {
+                                                        Text(project.name)
+                                                        if selectedProject?.id == project.id {
+                                                            Image(systemName: "checkmark")
+                                                        }
+                                                    }
+                                                }
+                                            }
+                                        } label: {
+                                            HStack(spacing: 4) {
+                                                Text(selectedProject?.name ?? "Select...")
+                                                    .font(.system(size: 13))
+                                                    .foregroundColor(.white.opacity(0.85))
+                                                Image(systemName: "chevron.up.chevron.down")
+                                                    .font(.system(size: 8))
+                                                    .foregroundColor(.white.opacity(0.4))
+                                            }
+                                        }
+                                        .menuStyle(.borderlessButton)
+                                        .menuIndicator(.hidden)
+                                        .fixedSize()
+                                    }
 
-                            if let envs = selectedProject?.environments, !envs.isEmpty {
-                                VStack(alignment: .leading, spacing: 6) {
-                                    Text("ENVIRONMENT")
-                                        .font(.system(size: 10, weight: .semibold))
-                                        .foregroundColor(Color.vault.textSecondary)
-                                        .tracking(1.2)
+                                    Divider().opacity(0.2)
 
-                                    HStack(spacing: 6) {
-                                        ForEach(envs) { env in
-                                            let isSelected = selectedEnvironment?.id == env.id
-                                            Button {
-                                                withAnimation(.spring(response: 0.3)) {
-                                                    selectedEnvironment = env
+                                    settingsRow(
+                                        icon: "leaf.fill",
+                                        label: "Environment"
+                                    ) {
+                                        if let envs = selectedProject?.environments, !envs.isEmpty {
+                                            Menu {
+                                                ForEach(envs) { env in
+                                                    Button {
+                                                        selectedEnvironment = env
+                                                    } label: {
+                                                        HStack {
+                                                            Text(env.name)
+                                                            if selectedEnvironment?.id == env.id {
+                                                                Image(systemName: "checkmark")
+                                                            }
+                                                        }
+                                                    }
                                                 }
                                             } label: {
-                                                Text(env.name)
-                                                    .font(.system(size: 12, weight: isSelected ? .semibold : .regular))
-                                                    .foregroundColor(isSelected ? Color.vault.bg : Color.vault.textSecondary)
-                                                    .padding(.horizontal, 14)
-                                                    .padding(.vertical, 6)
-                                                    .background(isSelected ? Color.vault.accent : Color.vault.bg)
-                                                    .cornerRadius(6)
-                                                    .overlay(
-                                                        RoundedRectangle(cornerRadius: 6)
-                                                            .stroke(isSelected ? Color.vault.accent : Color.vault.border, lineWidth: 1)
-                                                    )
+                                                HStack(spacing: 4) {
+                                                    Text(selectedEnvironment?.name ?? "Select...")
+                                                        .font(.system(size: 13))
+                                                        .foregroundColor(.white.opacity(0.85))
+                                                    Image(systemName: "chevron.up.chevron.down")
+                                                        .font(.system(size: 8))
+                                                        .foregroundColor(.white.opacity(0.4))
+                                                }
                                             }
-                                            .buttonStyle(.plain)
+                                            .menuStyle(.borderlessButton)
+                                            .menuIndicator(.hidden)
+                                            .fixedSize()
                                         }
                                     }
                                 }
                             }
 
-                            VaultTextField(label: "Secret Path", text: $secretPath, isMonospaced: true)
+                            // Keyboard Shortcut card
+                            glassCard {
+                                VStack(spacing: 12) {
+                                    settingsRow(
+                                        icon: "keyboard",
+                                        label: "Shortcut"
+                                    ) {
+                                        HStack(spacing: 8) {
+                                            if isRecordingShortcut {
+                                                Text("Press keys...")
+                                                    .font(.system(size: 12))
+                                                    .foregroundColor(Color.vault.accent)
+                                            } else {
+                                                Text(ShortcutHelper.displayString(keyCode: shortcutKeyCode, modifiers: shortcutModifiers))
+                                                    .font(.system(size: 13, weight: .medium, design: .monospaced))
+                                                    .foregroundColor(.white.opacity(0.85))
+                                            }
 
-                            // Divider
-                            Rectangle()
-                                .fill(Color.vault.border)
-                                .frame(height: 1)
-                                .padding(.vertical, 4)
+                                            Button {
+                                                if isRecordingShortcut {
+                                                    stopRecording()
+                                                } else {
+                                                    startRecording()
+                                                }
+                                            } label: {
+                                                Text(isRecordingShortcut ? "Stop" : "Set")
+                                                    .font(.system(size: 10, weight: .semibold))
+                                                    .foregroundColor(isRecordingShortcut ? Color.vault.bg : .white.opacity(0.7))
+                                                    .padding(.horizontal, 10)
+                                                    .padding(.vertical, 4)
+                                                    .background(isRecordingShortcut ? Color.vault.accent : .white.opacity(0.1))
+                                                    .cornerRadius(5)
+                                            }
+                                            .buttonStyle(.plain)
+                                        }
+                                    }
 
-                            // Keyboard shortcut section
-                            shortcutSection
+                                    if let conflict = shortcutConflict {
+                                        HStack(spacing: 4) {
+                                            Image(systemName: "exclamationmark.triangle.fill")
+                                                .font(.system(size: 9))
+                                            Text(conflict)
+                                                .font(.system(size: 10))
+                                        }
+                                        .foregroundColor(Color.vault.warning)
+                                        .frame(maxWidth: .infinity, alignment: .leading)
+                                        .padding(.leading, 28)
+                                    }
+
+                                    let isDefault = shortcutKeyCode == AppConfiguration.defaultShortcutKeyCode
+                                        && shortcutModifiers == AppConfiguration.defaultShortcutModifiers
+                                    if !isDefault {
+                                        Button {
+                                            shortcutKeyCode = AppConfiguration.defaultShortcutKeyCode
+                                            shortcutModifiers = AppConfiguration.defaultShortcutModifiers
+                                            shortcutConflict = nil
+                                        } label: {
+                                            Text("Reset to ⌘ ⇧ K")
+                                                .font(.system(size: 10))
+                                                .foregroundColor(.white.opacity(0.35))
+                                        }
+                                        .buttonStyle(.plain)
+                                        .frame(maxWidth: .infinity, alignment: .trailing)
+                                    }
+                                }
+                            }
+
+                            // About card
+                            glassCard {
+                                settingsRow(
+                                    icon: "info.circle.fill",
+                                    label: "Version"
+                                ) {
+                                    Text("1.0.0")
+                                        .font(.system(size: 12))
+                                        .foregroundColor(.white.opacity(0.4))
+                                }
+                            }
                         }
-                        .padding(.horizontal, 28)
+                        .padding(.horizontal, 24)
                     }
 
-                    Spacer()
+                    Spacer(minLength: 8)
                 }
 
                 if let msg = statusMessage {
@@ -125,133 +222,70 @@ struct SettingsView: View {
                         .font(.system(size: 11, weight: .medium))
                         .foregroundColor(msg.contains("Saved") ? Color.vault.success : Color.vault.error)
                         .padding(.bottom, 4)
-                        .transition(.opacity)
                 }
 
-                // Footer buttons
-                HStack {
-                    VaultButton(title: "Cancel", style: .ghost) {
-                        stopRecording()
-                        onDismiss()
-                    }
-
-                    Spacer()
-
-                    VaultButton(
-                        title: "Save",
-                        style: .primary,
-                        isDisabled: selectedProject == nil || selectedEnvironment == nil
-                    ) {
-                        stopRecording()
-                        save()
-                    }
+                // Save button
+                Button {
+                    stopRecording()
+                    save()
+                } label: {
+                    Text("Save")
+                        .font(.system(size: 13, weight: .semibold))
+                        .foregroundColor(.white)
+                        .frame(maxWidth: .infinity)
+                        .padding(.vertical, 10)
+                        .background(Color.vault.accent)
+                        .cornerRadius(10)
                 }
-                .padding(.horizontal, 28)
-                .padding(.bottom, 24)
+                .buttonStyle(.plain)
+                .disabled(selectedProject == nil || selectedEnvironment == nil)
+                .opacity(selectedProject == nil || selectedEnvironment == nil ? 0.4 : 1)
+                .padding(.horizontal, 24)
+                .padding(.bottom, 20)
             }
         }
-        .frame(width: 440, height: 480)
+        .frame(width: 400, height: 440)
         .preferredColorScheme(.dark)
         .onAppear {
             loadData()
             loadShortcut()
-            withAnimation(.easeOut(duration: 0.4).delay(0.1)) {
-                appeared = true
-            }
         }
         .onDisappear {
             stopRecording()
         }
     }
 
-    // MARK: - Keyboard Shortcut Section
+    // MARK: - Glass Card
 
-    private var shortcutSection: some View {
-        VStack(alignment: .leading, spacing: 8) {
-            Text("KEYBOARD SHORTCUT")
-                .font(.system(size: 10, weight: .semibold))
-                .foregroundColor(Color.vault.textSecondary)
-                .tracking(1.2)
+    @ViewBuilder
+    private func glassCard<Content: View>(@ViewBuilder content: () -> Content) -> some View {
+        content()
+            .padding(16)
+            .background(.ultraThinMaterial.opacity(0.6))
+            .cornerRadius(12)
+            .overlay(
+                RoundedRectangle(cornerRadius: 12)
+                    .stroke(.white.opacity(0.06), lineWidth: 1)
+            )
+    }
 
-            HStack(spacing: 10) {
-                // Shortcut display
-                HStack(spacing: 6) {
-                    if isRecordingShortcut {
-                        Text("Press a key combo...")
-                            .font(.system(size: 12))
-                            .foregroundColor(Color.vault.accent)
-                    } else {
-                        Text(ShortcutHelper.displayString(keyCode: shortcutKeyCode, modifiers: shortcutModifiers))
-                            .font(.system(size: 13, weight: .medium, design: .monospaced))
-                            .foregroundColor(Color.vault.text)
-                    }
-                }
-                .frame(maxWidth: .infinity, alignment: .leading)
-                .padding(.horizontal, 12)
-                .padding(.vertical, 8)
-                .background(Color.vault.bg)
-                .cornerRadius(8)
-                .overlay(
-                    RoundedRectangle(cornerRadius: 8)
-                        .stroke(isRecordingShortcut ? Color.vault.accent : Color.vault.border, lineWidth: isRecordingShortcut ? 2 : 1)
-                )
-                .animation(.easeInOut(duration: 0.2), value: isRecordingShortcut)
+    // MARK: - Settings Row
 
-                // Record / Stop button
-                VaultButton(
-                    title: isRecordingShortcut ? "Stop" : "Record",
-                    style: isRecordingShortcut ? .primary : .secondary
-                ) {
-                    if isRecordingShortcut {
-                        stopRecording()
-                    } else {
-                        startRecording()
-                    }
-                }
-            }
+    @ViewBuilder
+    private func settingsRow<Content: View>(icon: String, label: String, @ViewBuilder trailing: () -> Content) -> some View {
+        HStack(spacing: 10) {
+            Image(systemName: icon)
+                .font(.system(size: 12))
+                .foregroundColor(Color.vault.accent)
+                .frame(width: 18)
 
-            // Conflict or status message
-            if let conflict = shortcutConflict {
-                HStack(spacing: 4) {
-                    Image(systemName: "exclamationmark.triangle.fill")
-                        .font(.system(size: 9))
-                    Text(conflict)
-                        .font(.system(size: 10))
-                }
-                .foregroundColor(Color.vault.warning)
-                .transition(.opacity)
-            } else if !isRecordingShortcut {
-                HStack(spacing: 4) {
-                    Image(systemName: "checkmark.circle.fill")
-                        .font(.system(size: 9))
-                    Text("No conflicts detected")
-                        .font(.system(size: 10))
-                }
-                .foregroundColor(Color.vault.success.opacity(0.7))
-                .transition(.opacity)
-            }
+            Text(label)
+                .font(.system(size: 13))
+                .foregroundColor(.white.opacity(0.6))
 
-            // Reset to default
-            let isDefault = shortcutKeyCode == AppConfiguration.defaultShortcutKeyCode
-                && shortcutModifiers == AppConfiguration.defaultShortcutModifiers
-            if !isDefault {
-                Button {
-                    withAnimation(.spring(response: 0.3)) {
-                        shortcutKeyCode = AppConfiguration.defaultShortcutKeyCode
-                        shortcutModifiers = AppConfiguration.defaultShortcutModifiers
-                        shortcutConflict = nil
-                    }
-                } label: {
-                    HStack(spacing: 4) {
-                        Image(systemName: "arrow.counterclockwise")
-                            .font(.system(size: 9))
-                        Text("Reset to default (⌘ ⇧ K)")
-                            .font(.system(size: 10))
-                    }
-                    .foregroundColor(Color.vault.textTertiary)
-                }
-                .buttonStyle(.plain)
-            }
+            Spacer()
+
+            trailing()
         }
     }
 
@@ -268,36 +302,23 @@ struct SettingsView: View {
         isRecordingShortcut = true
         shortcutConflict = nil
 
-        // Listen for key events
         shortcutMonitor = NSEvent.addLocalMonitorForEvents(matching: [.keyDown]) { event in
             let carbonMods = ShortcutHelper.carbonModifiers(from: event.modifierFlags)
-
-            // Require at least one modifier key
             guard carbonMods != 0 else { return event }
 
-            // Ignore modifier-only keypresses (keyCode for modifier keys)
             let modifierKeyCodes: Set<UInt16> = [54, 55, 56, 57, 58, 59, 60, 61, 62, 63]
             guard !modifierKeyCodes.contains(event.keyCode) else { return event }
 
-            let newKeyCode = UInt32(event.keyCode)
-            let newModifiers = carbonMods
+            shortcutKeyCode = UInt32(event.keyCode)
+            shortcutModifiers = carbonMods
 
-            withAnimation(.spring(response: 0.3)) {
-                shortcutKeyCode = newKeyCode
-                shortcutModifiers = newModifiers
-            }
-
-            // Check for conflicts
             let conflict = GlobalShortcutManager.shared.checkConflict(
-                keyCode: newKeyCode,
-                modifiers: newModifiers
+                keyCode: UInt32(event.keyCode),
+                modifiers: carbonMods
             )
-            withAnimation {
-                shortcutConflict = conflict
-            }
-
+            shortcutConflict = conflict
             stopRecording()
-            return nil // consume the event
+            return nil
         }
     }
 
@@ -309,29 +330,39 @@ struct SettingsView: View {
         }
     }
 
-    // MARK: - Data Loading
+    // MARK: - Data
 
     private func loadData() {
         Task {
+            // Use cache first
+            let cached = ProjectCache.shared.cachedProjects
+            if !cached.isEmpty {
+                projects = cached
+                applyConfig()
+                isLoading = false
+
+                // Background refresh
+                Task {
+                    let fresh = await ProjectCache.shared.fetchProjects()
+                    if fresh != projects { projects = fresh }
+                }
+                return
+            }
+
             isLoading = true
-            do {
-                let orgs = try await InfisicalCLIService.fetchOrganizations()
-                if let org = orgs.first {
-                    projects = try await InfisicalCLIService.fetchProjects(orgId: org.id)
-                }
-            } catch {
-                statusMessage = error.localizedDescription
-            }
-
-            if let config = AppConfiguration.load() {
-                selectedProject = projects.first(where: { $0.id == config.projectId })
-                if let project = selectedProject {
-                    selectedEnvironment = project.environments.first(where: { $0.slug == config.environment })
-                }
-                secretPath = config.secretPath
-            }
-
+            projects = await ProjectCache.shared.fetchProjects()
+            applyConfig()
             isLoading = false
+        }
+    }
+
+    private func applyConfig() {
+        if let config = AppConfiguration.load() {
+            selectedProject = projects.first(where: { $0.id == config.projectId })
+            if let project = selectedProject {
+                selectedEnvironment = project.environments.first(where: { $0.slug == config.environment })
+            }
+            secretPath = config.secretPath
         }
     }
 
@@ -341,7 +372,6 @@ struct SettingsView: View {
         guard let project = selectedProject,
               let env = selectedEnvironment else { return }
 
-        // Preserve existing config fields, add shortcut
         let existingConfig = AppConfiguration.load()
         let config = AppConfiguration(
             projectId: project.id,
@@ -354,7 +384,6 @@ struct SettingsView: View {
         )
         config.save()
 
-        // Update the live global shortcut
         GlobalShortcutManager.shared.updateShortcut(
             keyCode: shortcutKeyCode,
             modifiers: shortcutModifiers
@@ -365,5 +394,25 @@ struct SettingsView: View {
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.6) {
             onDismiss()
         }
+    }
+}
+
+// MARK: - NSVisualEffectView wrapper for glass blur
+
+struct VisualEffectBlur: NSViewRepresentable {
+    let material: NSVisualEffectView.Material
+    let blendingMode: NSVisualEffectView.BlendingMode
+
+    func makeNSView(context: Context) -> NSVisualEffectView {
+        let view = NSVisualEffectView()
+        view.material = material
+        view.blendingMode = blendingMode
+        view.state = .active
+        return view
+    }
+
+    func updateNSView(_ nsView: NSVisualEffectView, context: Context) {
+        nsView.material = material
+        nsView.blendingMode = blendingMode
     }
 }

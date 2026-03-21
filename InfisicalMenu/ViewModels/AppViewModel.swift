@@ -9,34 +9,84 @@ final class AppViewModel: ObservableObject {
     @Published var errorMessage: String?
     @Published var isConfigured: Bool = false
 
+    /// Copy counts persisted in UserDefaults
+    private var copyCounts: [String: Int] = [:]
+    private static let copyCountsKey = "infisical_copy_counts"
+    private static let secretsCacheKey = "infisical_secrets_cache"
+
+    /// Max items to show in menubar when not searching
+    static let menubarMaxItems = 5
+
+    init() {
+        isConfigured = AppConfiguration.load() != nil
+        loadCopyCounts()
+        loadCachedSecrets()
+    }
+
+    /// Secrets sorted by most-copied first, then alphabetical
+    var sortedSecrets: [SecretItem] {
+        secrets.sorted { a, b in
+            let countA = copyCounts[a.key] ?? 0
+            let countB = copyCounts[b.key] ?? 0
+            if countA != countB { return countA > countB }
+            return a.key < b.key
+        }
+    }
+
+    /// Filtered (by search), sorted by most-copied
     var filteredSecrets: [SecretItem] {
-        if searchText.isEmpty { return secrets }
-        return secrets.filter {
+        let sorted = sortedSecrets
+        if searchText.isEmpty { return sorted }
+        return sorted.filter {
             $0.key.localizedCaseInsensitiveContains(searchText)
         }
     }
 
-    init() {
-        isConfigured = AppConfiguration.load() != nil
+    /// Top N secrets for the menubar (when not searching)
+    var menubarSecrets: [SecretItem] {
+        if !searchText.isEmpty {
+            return filteredSecrets
+        }
+        return Array(sortedSecrets.prefix(Self.menubarMaxItems))
     }
 
+    /// How many secrets are hidden in the menubar
+    var hiddenCount: Int {
+        max(0, secrets.count - Self.menubarMaxItems)
+    }
+
+    /// Copy count for a given key
+    func copyCount(for key: String) -> Int {
+        copyCounts[key] ?? 0
+    }
+
+    /// Load secrets: show cached data instantly, refresh silently in background
     func loadSecrets() async {
         guard let config = AppConfiguration.load() else {
             isConfigured = false
             return
         }
 
-        isLoading = true
+        // Only show loader if we have NO cached data at all
+        let hadCachedData = !secrets.isEmpty
+        if !hadCachedData {
+            isLoading = true
+        }
         errorMessage = nil
 
         do {
-            secrets = try await InfisicalCLIService.listSecrets(
+            let fresh = try await InfisicalCLIService.listSecrets(
                 environment: config.environment,
                 projectId: config.projectId,
                 secretPath: config.secretPath
             )
+            secrets = fresh
+            cacheSecrets(fresh)
         } catch {
-            errorMessage = error.localizedDescription
+            // Only show error if we have no data to display
+            if secrets.isEmpty {
+                errorMessage = error.localizedDescription
+            }
         }
 
         isLoading = false
@@ -44,12 +94,13 @@ final class AppViewModel: ObservableObject {
 
     func copySecret(_ secret: SecretItem) {
         ClipboardService.copy(secret.value)
+        copyCounts[secret.key, default: 0] += 1
+        saveCopyCounts()
     }
 
     func createSecret(key: String, value: String) async -> Bool {
         guard let config = AppConfiguration.load() else { return false }
 
-        isLoading = true
         do {
             try await InfisicalCLIService.createSecret(
                 key: key,
@@ -58,13 +109,10 @@ final class AppViewModel: ObservableObject {
                 projectId: config.projectId,
                 secretPath: config.secretPath
             )
-            // Refresh the list
             await loadSecrets()
-            isLoading = false
             return true
         } catch {
             errorMessage = error.localizedDescription
-            isLoading = false
             return false
         }
     }
@@ -73,6 +121,35 @@ final class AppViewModel: ObservableObject {
         isConfigured = true
         Task {
             await loadSecrets()
+        }
+    }
+
+    // MARK: - Secrets Cache (UserDefaults)
+
+    private func loadCachedSecrets() {
+        guard let data = UserDefaults.standard.data(forKey: Self.secretsCacheKey),
+              let cached = try? JSONDecoder().decode([SecretItem].self, from: data) else { return }
+        secrets = cached
+    }
+
+    private func cacheSecrets(_ items: [SecretItem]) {
+        if let data = try? JSONEncoder().encode(items) {
+            UserDefaults.standard.set(data, forKey: Self.secretsCacheKey)
+        }
+    }
+
+    // MARK: - Copy Counts Persistence
+
+    private func loadCopyCounts() {
+        if let data = UserDefaults.standard.data(forKey: Self.copyCountsKey),
+           let decoded = try? JSONDecoder().decode([String: Int].self, from: data) {
+            copyCounts = decoded
+        }
+    }
+
+    private func saveCopyCounts() {
+        if let data = try? JSONEncoder().encode(copyCounts) {
+            UserDefaults.standard.set(data, forKey: Self.copyCountsKey)
         }
     }
 }
