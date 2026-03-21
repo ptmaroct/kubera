@@ -30,7 +30,9 @@ struct SecretListView: View {
                     .frame(height: 1)
 
                 // Secret list
-                if listVM.filteredSecrets.isEmpty {
+                if appViewModel.isLoading && appViewModel.secrets.isEmpty {
+                    loadingState
+                } else if listVM.filteredSecrets.isEmpty {
                     emptyState
                 } else {
                     secretList
@@ -178,6 +180,21 @@ struct SecretListView: View {
         }
     }
 
+    // MARK: - Loading State
+
+    private var loadingState: some View {
+        VStack(spacing: 12) {
+            Spacer()
+            ProgressView()
+                .scaleEffect(0.8)
+            Text("Loading secrets...")
+                .font(.system(size: 13))
+                .foregroundColor(Color.vault.textSecondary)
+            Spacer()
+        }
+        .frame(maxWidth: .infinity)
+    }
+
     // MARK: - Empty State
 
     private var emptyState: some View {
@@ -307,20 +324,13 @@ struct SecretRow: View {
 struct TagChip: View {
     let tag: SecretTag
 
-    var tagColor: Color {
-        if let hex = tag.color {
-            return Color(hex: hex)
-        }
-        return Color.vault.accent
-    }
-
     var body: some View {
         Text(tag.displayName)
             .font(.system(size: 9, weight: .medium))
-            .foregroundColor(tagColor)
+            .foregroundColor(Color.vault.accent)
             .padding(.horizontal, 6)
             .padding(.vertical, 2)
-            .background(tagColor.opacity(0.12))
+            .background(Color.vault.accent.opacity(0.12))
             .cornerRadius(4)
     }
 }

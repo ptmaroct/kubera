@@ -14,14 +14,41 @@ final class SecretListViewModel: ObservableObject {
     @Published var isDeleting: Bool = false
     @Published var copiedSecretId: String?
 
+    /// Snapshot of sort order at window open — doesn't re-sort on copy
+    @Published private var sortedKeyOrder: [String] = []
+
     init(appViewModel: AppViewModel) {
         self.appViewModel = appViewModel
+        snapshotOrder()
+    }
+
+    /// Capture the current sort order so copies don't shuffle the list
+    func snapshotOrder() {
+        sortedKeyOrder = appViewModel.sortedSecrets.map { $0.key }
+    }
+
+    /// Secrets in stable order (snapshotted at window open), with new secrets appended
+    private var stableSecrets: [SecretItem] {
+        let secretsByKey = Dictionary(uniqueKeysWithValues: appViewModel.secrets.map { ($0.key, $0) })
+        var result: [SecretItem] = []
+        // First: secrets in snapshotted order
+        for key in sortedKeyOrder {
+            if let secret = secretsByKey[key] {
+                result.append(secret)
+            }
+        }
+        // Then: any new secrets not in snapshot
+        let snapshotSet = Set(sortedKeyOrder)
+        for secret in appViewModel.secrets where !snapshotSet.contains(secret.key) {
+            result.append(secret)
+        }
+        return result
     }
 
     var filteredSecrets: [SecretItem] {
-        let sorted = appViewModel.sortedSecrets
-        if searchText.isEmpty { return sorted }
-        return sorted.filter {
+        let secrets = stableSecrets
+        if searchText.isEmpty { return secrets }
+        return secrets.filter {
             $0.key.localizedCaseInsensitiveContains(searchText) ||
             ($0.comment?.localizedCaseInsensitiveContains(searchText) ?? false) ||
             ($0.tags?.contains(where: { $0.displayName.localizedCaseInsensitiveContains(searchText) }) ?? false)
