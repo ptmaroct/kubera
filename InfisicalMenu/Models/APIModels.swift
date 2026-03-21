@@ -27,3 +27,14 @@ struct OrgsResponse: Codable {
 struct WorkspacesResponse: Codable {
     let workspaces: [InfisicalProject]
 }
+
+struct InfisicalTag: Codable, Identifiable, Hashable {
+    let id: String
+    let name: String
+    let slug: String
+    let color: String?
+}
+
+struct TagsResponse: Codable {
+    let workspaceTags: [InfisicalTag]
+}

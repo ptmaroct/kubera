@@ -173,7 +173,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
             let view = AddSecretView(viewModel: viewModel) { [weak self] in
                 self?.addSecretWindow?.close()
             }
-            addSecretWindow = makeStyledWindow(view: view, width: 420, height: 300)
+            addSecretWindow = makeStyledWindow(view: view, width: 480, height: 580)
         }
         addSecretWindow?.makeKeyAndOrderFront(nil)
         NSApp.activate(ignoringOtherApps: true)
@@ -192,7 +192,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
             let view = SettingsView(viewModel: viewModel) { [weak self] in
                 self?.settingsWindow?.close()
             }
-            settingsWindow = makeStyledWindow(view: view, width: 440, height: 400)
+            settingsWindow = makeStyledWindow(view: view, width: 440, height: 480)
         }
         settingsWindow?.makeKeyAndOrderFront(nil)
         NSApp.activate(ignoringOtherApps: true)
@@ -238,7 +238,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     // MARK: - Keyboard Shortcut
 
     private func setupKeyboardShortcut() {
-        GlobalShortcutManager.shared.register { [weak self] in
+        let config = AppConfiguration.load()
+        let keyCode = config?.resolvedKeyCode ?? AppConfiguration.defaultShortcutKeyCode
+        let modifiers = config?.resolvedModifiers ?? AppConfiguration.defaultShortcutModifiers
+
+        GlobalShortcutManager.shared.register(keyCode: keyCode, modifiers: modifiers) { [weak self] in
             guard let self, let button = self.statusItem.button else { return }
             DispatchQueue.main.async {
                 button.performClick(nil)

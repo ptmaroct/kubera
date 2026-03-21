@@ -312,3 +312,64 @@ extension InfisicalProject: CustomStringConvertible {
 extension InfisicalEnvironment: CustomStringConvertible {
     var description: String { name }
 }
+
+extension InfisicalTag: CustomStringConvertible {
+    var description: String { name }
+}
+
+// MARK: - Color Hex Initializer
+
+extension Color {
+    init(hex: String) {
+        let hex = hex.trimmingCharacters(in: CharacterSet(charactersIn: "#"))
+        let scanner = Scanner(string: hex)
+        var rgbValue: UInt64 = 0
+        scanner.scanHexInt64(&rgbValue)
+        let r = Double((rgbValue & 0xFF0000) >> 16) / 255.0
+        let g = Double((rgbValue & 0x00FF00) >> 8) / 255.0
+        let b = Double((rgbValue & 0x0000FF)) / 255.0
+        self.init(red: r, green: g, blue: b)
+    }
+}
+
+// MARK: - VaultTextEditor (multiline)
+
+struct VaultTextEditor: View {
+    let label: String
+    @Binding var text: String
+    var placeholder: String = ""
+    var lineCount: Int = 3
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 6) {
+            Text(label.uppercased())
+                .font(.system(size: 10, weight: .semibold, design: .default))
+                .foregroundColor(Color.vault.textSecondary)
+                .tracking(1.2)
+
+            ZStack(alignment: .topLeading) {
+                TextEditor(text: $text)
+                    .font(.system(size: 13))
+                    .foregroundColor(Color.vault.text)
+                    .scrollContentBackground(.hidden)
+                    .padding(8)
+                    .frame(height: CGFloat(lineCount) * 20)
+
+                if text.isEmpty {
+                    Text(placeholder)
+                        .font(.system(size: 13))
+                        .foregroundColor(Color.vault.textTertiary)
+                        .padding(.horizontal, 12)
+                        .padding(.vertical, 12)
+                        .allowsHitTesting(false)
+                }
+            }
+            .background(Color.vault.bg)
+            .cornerRadius(8)
+            .overlay(
+                RoundedRectangle(cornerRadius: 8)
+                    .stroke(Color.vault.border, lineWidth: 1)
+            )
+        }
+    }
+}

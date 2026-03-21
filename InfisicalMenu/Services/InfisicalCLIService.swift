@@ -147,6 +147,61 @@ struct InfisicalCLIService {
         return response.workspaces
     }
 
+    /// Fetch tags for a workspace (project) via API
+    static func fetchTags(projectId: String, baseURL: String = "https://app.infisical.com") async throws -> [InfisicalTag] {
+        guard let token = getToken() else { throw CLIError.notLoggedIn }
+        let url = URL(string: "\(baseURL)/api/v2/workspace/\(projectId)/tags")!
+        var request = URLRequest(url: url)
+        request.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
+        let (data, _) = try await URLSession.shared.data(for: request)
+        let response = try JSONDecoder().decode(TagsResponse.self, from: data)
+        return response.workspaceTags
+    }
+
+    /// Create a new secret via Infisical REST API (supports comment and tags)
+    static func createSecretViaAPI(
+        name: String,
+        value: String,
+        comment: String = "",
+        tagIds: [String] = [],
+        environment: String,
+        projectId: String,
+        secretPath: String = "/",
+        baseURL: String = "https://app.infisical.com"
+    ) async throws {
+        guard let token = getToken() else { throw CLIError.notLoggedIn }
+        let encodedName = name.addingPercentEncoding(withAllowedCharacters: .urlPathAllowed) ?? name
+        let url = URL(string: "\(baseURL)/api/v3/secrets/raw/\(encodedName)")!
+        var request = URLRequest(url: url)
+        request.httpMethod = "POST"
+        request.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
+        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        request.timeoutInterval = 15
+
+        var body: [String: Any] = [
+            "workspaceId": projectId,
+            "environment": environment,
+            "secretPath": secretPath,
+            "secretValue": value,
+            "type": "shared"
+        ]
+        if !comment.isEmpty { body["secretComment"] = comment }
+        if !tagIds.isEmpty { body["tagIds"] = tagIds }
+
+        request.httpBody = try JSONSerialization.data(withJSONObject: body)
+        let (data, response) = try await URLSession.shared.data(for: request)
+
+        if let httpResponse = response as? HTTPURLResponse, httpResponse.statusCode >= 400 {
+            // Try to parse error message from response
+            if let errorJson = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+               let message = errorJson["message"] as? String {
+                throw CLIError.executionFailed(message)
+            }
+            let errorBody = String(data: data, encoding: .utf8) ?? "Unknown error"
+            throw CLIError.executionFailed(errorBody)
+        }
+    }
+
     // MARK: - Shell Execution
 
     private static func runShell(_ path: String, arguments: [String]) throws -> String {
