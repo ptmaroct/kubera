@@ -60,14 +60,13 @@ final class AppViewModel: ObservableObject {
         copyCounts[key] ?? 0
     }
 
-    /// Load secrets: show cached data instantly, refresh silently in background
+    /// Load secrets via REST API with cache-first strategy
     func loadSecrets() async {
         guard let config = AppConfiguration.load() else {
             isConfigured = false
             return
         }
 
-        // Only show loader if we have NO cached data at all
         let hadCachedData = !secrets.isEmpty
         if !hadCachedData {
             isLoading = true
@@ -75,10 +74,11 @@ final class AppViewModel: ObservableObject {
         errorMessage = nil
 
         do {
-            let fresh = try await InfisicalCLIService.listSecrets(
+            let fresh = try await InfisicalCLIService.listSecretsViaAPI(
                 environment: config.environment,
                 projectId: config.projectId,
-                secretPath: config.secretPath
+                secretPath: config.secretPath,
+                baseURL: config.baseURL
             )
             secrets = fresh
             cacheSecrets(fresh)
@@ -110,6 +110,49 @@ final class AppViewModel: ObservableObject {
                 secretPath: config.secretPath
             )
             await loadSecrets()
+            return true
+        } catch {
+            errorMessage = error.localizedDescription
+            return false
+        }
+    }
+
+    /// Update an existing secret's value and comment
+    func updateSecret(_ secret: SecretItem, newValue: String, newComment: String) async -> Bool {
+        guard let config = AppConfiguration.load() else { return false }
+
+        do {
+            try await InfisicalCLIService.updateSecret(
+                name: secret.key,
+                value: newValue,
+                comment: newComment,
+                environment: config.environment,
+                projectId: config.projectId,
+                secretPath: config.secretPath,
+                baseURL: config.baseURL
+            )
+            await loadSecrets()
+            return true
+        } catch {
+            errorMessage = error.localizedDescription
+            return false
+        }
+    }
+
+    /// Delete a secret
+    func deleteSecret(_ secret: SecretItem) async -> Bool {
+        guard let config = AppConfiguration.load() else { return false }
+
+        do {
+            try await InfisicalCLIService.deleteSecret(
+                name: secret.key,
+                environment: config.environment,
+                projectId: config.projectId,
+                secretPath: config.secretPath,
+                baseURL: config.baseURL
+            )
+            secrets.removeAll { $0.key == secret.key }
+            cacheSecrets(secrets)
             return true
         } catch {
             errorMessage = error.localizedDescription

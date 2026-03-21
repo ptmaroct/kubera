@@ -107,7 +107,7 @@ final class OnboardingViewModel: ObservableObject {
 
         // Verify it works
         do {
-            _ = try await InfisicalCLIService.listSecrets(
+            _ = try await InfisicalCLIService.listSecretsViaAPI(
                 environment: env.slug,
                 projectId: project.id,
                 secretPath: secretPath
@@ -123,7 +123,8 @@ final class OnboardingViewModel: ObservableObject {
             environment: env.slug,
             secretPath: secretPath,
             baseURL: AppConfiguration.defaultBaseURL,
-            projectName: project.name
+            projectName: project.name,
+            organizationId: selectedOrg?.id
         )
         config.save()
         isSaving = false

@@ -400,6 +400,7 @@ struct SettingsView: View {
             secretPath: secretPath,
             baseURL: existingConfig?.baseURL ?? AppConfiguration.defaultBaseURL,
             projectName: project.name,
+            organizationId: existingConfig?.organizationId,
             shortcutKeyCode: shortcutKeyCode,
             shortcutModifiers: shortcutModifiers
         )

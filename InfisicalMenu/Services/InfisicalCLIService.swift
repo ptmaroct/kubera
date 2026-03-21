@@ -204,6 +204,115 @@ struct InfisicalCLIService {
         return tagResponse.workspaceTag
     }
 
+    /// List all secrets via Infisical REST API (returns rich metadata: version, tags, timestamps)
+    static func listSecretsViaAPI(
+        environment: String,
+        projectId: String,
+        secretPath: String = "/",
+        baseURL: String = "https://app.infisical.com"
+    ) async throws -> [SecretItem] {
+        guard let token = getToken() else { throw CLIError.notLoggedIn }
+
+        var components = URLComponents(string: "\(baseURL)/api/v3/secrets/raw")!
+        components.queryItems = [
+            URLQueryItem(name: "workspaceId", value: projectId),
+            URLQueryItem(name: "environment", value: environment),
+            URLQueryItem(name: "secretPath", value: secretPath)
+        ]
+
+        var request = URLRequest(url: components.url!)
+        request.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
+        request.timeoutInterval = 15
+
+        let (data, response) = try await URLSession.shared.data(for: request)
+
+        if let httpResponse = response as? HTTPURLResponse, httpResponse.statusCode >= 400 {
+            if let errorJson = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+               let message = errorJson["message"] as? String {
+                throw CLIError.executionFailed(message)
+            }
+            throw CLIError.executionFailed("Failed to fetch secrets")
+        }
+
+        let decoded = try JSONDecoder().decode(SecretsListResponse.self, from: data)
+        return decoded.secrets
+    }
+
+    /// Update an existing secret via Infisical REST API
+    static func updateSecret(
+        name: String,
+        value: String,
+        comment: String = "",
+        tagIds: [String] = [],
+        environment: String,
+        projectId: String,
+        secretPath: String = "/",
+        baseURL: String = "https://app.infisical.com"
+    ) async throws {
+        guard let token = getToken() else { throw CLIError.notLoggedIn }
+        let encodedName = name.addingPercentEncoding(withAllowedCharacters: .urlPathAllowed) ?? name
+        let url = URL(string: "\(baseURL)/api/v3/secrets/raw/\(encodedName)")!
+        var request = URLRequest(url: url)
+        request.httpMethod = "PATCH"
+        request.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
+        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        request.timeoutInterval = 15
+
+        var body: [String: Any] = [
+            "workspaceId": projectId,
+            "environment": environment,
+            "secretPath": secretPath,
+            "secretValue": value
+        ]
+        if !comment.isEmpty { body["secretComment"] = comment }
+        if !tagIds.isEmpty { body["tagIds"] = tagIds }
+
+        request.httpBody = try JSONSerialization.data(withJSONObject: body)
+        let (data, response) = try await URLSession.shared.data(for: request)
+
+        if let httpResponse = response as? HTTPURLResponse, httpResponse.statusCode >= 400 {
+            if let errorJson = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+               let message = errorJson["message"] as? String {
+                throw CLIError.executionFailed(message)
+            }
+            throw CLIError.executionFailed("Failed to update secret")
+        }
+    }
+
+    /// Delete a secret via Infisical REST API
+    static func deleteSecret(
+        name: String,
+        environment: String,
+        projectId: String,
+        secretPath: String = "/",
+        baseURL: String = "https://app.infisical.com"
+    ) async throws {
+        guard let token = getToken() else { throw CLIError.notLoggedIn }
+        let encodedName = name.addingPercentEncoding(withAllowedCharacters: .urlPathAllowed) ?? name
+        let url = URL(string: "\(baseURL)/api/v3/secrets/raw/\(encodedName)")!
+        var request = URLRequest(url: url)
+        request.httpMethod = "DELETE"
+        request.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
+        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        request.timeoutInterval = 15
+
+        let body: [String: Any] = [
+            "workspaceId": projectId,
+            "environment": environment,
+            "secretPath": secretPath
+        ]
+        request.httpBody = try JSONSerialization.data(withJSONObject: body)
+        let (data, response) = try await URLSession.shared.data(for: request)
+
+        if let httpResponse = response as? HTTPURLResponse, httpResponse.statusCode >= 400 {
+            if let errorJson = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+               let message = errorJson["message"] as? String {
+                throw CLIError.executionFailed(message)
+            }
+            throw CLIError.executionFailed("Failed to delete secret")
+        }
+    }
+
     /// Create a new secret via Infisical REST API (supports comment and tags)
     static func createSecretViaAPI(
         name: String,

@@ -10,7 +10,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     private var onboardingWindow: NSWindow?
     private var addSecretWindow: NSWindow?
     private var settingsWindow: NSWindow?
+    private var secretListWindow: NSWindow?
     private var secretMenuItems: [NSMenuItem] = []
+
+    /// Tracks where secret items start/end in the menu for incremental updates
+    private var secretsRangeStart: Int = 0
+    private var secretsRangeEnd: Int = 0
 
     func applicationDidFinishLaunching(_ notification: Notification) {
         setupStatusItem()
@@ -62,42 +67,18 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         menu.addItem(searchItem)
         menu.addItem(NSMenuItem.separator())
 
-        // Secret items — show top 5 most-copied when not searching, all matches when searching
-        secretMenuItems.removeAll()
-        let displaySecrets = viewModel.menubarSecrets
+        // Mark where secrets start
+        secretsRangeStart = menu.items.count
 
-        if viewModel.isLoading && viewModel.secrets.isEmpty {
-            let loadingItem = NSMenuItem(title: "Loading...", action: nil, keyEquivalent: "")
-            loadingItem.isEnabled = false
-            menu.addItem(loadingItem)
-        } else if !viewModel.isConfigured {
-            let notConfiguredItem = NSMenuItem(title: "Not configured — open Settings", action: #selector(openSettings), keyEquivalent: "")
-            notConfiguredItem.target = self
-            menu.addItem(notConfiguredItem)
-        } else if displaySecrets.isEmpty {
-            let emptyTitle = viewModel.searchText.isEmpty ? "No secrets found" : "No results for \"\(viewModel.searchText)\""
-            let emptyItem = NSMenuItem(title: emptyTitle, action: nil, keyEquivalent: "")
-            emptyItem.isEnabled = false
-            menu.addItem(emptyItem)
-        } else {
-            for (index, secret) in displaySecrets.enumerated() {
-                let item = NSMenuItem(title: secret.key, action: #selector(copySecret(_:)), keyEquivalent: "")
-                item.target = self
-                item.tag = index
-                item.toolTip = "Click to copy value"
-                secretMenuItems.append(item)
-                menu.addItem(item)
-            }
-
-            // Show "N more secrets — search to find" when limited
-            if viewModel.searchText.isEmpty && viewModel.hiddenCount > 0 {
-                let moreItem = NSMenuItem(title: "\(viewModel.hiddenCount) more — type to search", action: nil, keyEquivalent: "")
-                moreItem.isEnabled = false
-                menu.addItem(moreItem)
-            }
-        }
+        // Secret items
+        insertSecretItems()
 
         menu.addItem(NSMenuItem.separator())
+
+        // View All Secrets
+        let viewAllItem = NSMenuItem(title: "View All Secrets...", action: #selector(openSecretList), keyEquivalent: "l")
+        viewAllItem.target = self
+        menu.addItem(viewAllItem)
 
         // Add New Secret
         let addItem = NSMenuItem(title: "Add New Secret...", action: #selector(openAddSecret), keyEquivalent: "n")
@@ -105,7 +86,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         menu.addItem(addItem)
 
         // Open Dashboard
-        let dashboardItem = NSMenuItem(title: "Open Infisical Dashboard", action: #selector(openDashboard), keyEquivalent: "")
+        let dashboardItem = NSMenuItem(title: "Open Infisical Dashboard", action: #selector(openDashboard), keyEquivalent: "d")
         dashboardItem.target = self
         menu.addItem(dashboardItem)
 
@@ -122,11 +103,67 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         menu.addItem(quitItem)
     }
 
+    /// Insert secret items at the current secretsRangeStart position and track the end
+    private func insertSecretItems() {
+        secretMenuItems.removeAll()
+        let displaySecrets = viewModel.menubarSecrets
+
+        if viewModel.isLoading && viewModel.secrets.isEmpty {
+            let loadingItem = NSMenuItem(title: "Loading...", action: nil, keyEquivalent: "")
+            loadingItem.isEnabled = false
+            menu.insertItem(loadingItem, at: secretsRangeStart)
+        } else if !viewModel.isConfigured {
+            let notConfiguredItem = NSMenuItem(title: "Not configured — open Settings", action: #selector(openSettings), keyEquivalent: "")
+            notConfiguredItem.target = self
+            menu.insertItem(notConfiguredItem, at: secretsRangeStart)
+        } else if displaySecrets.isEmpty {
+            let emptyTitle = viewModel.searchText.isEmpty ? "No secrets found" : "No results for \"\(viewModel.searchText)\""
+            let emptyItem = NSMenuItem(title: emptyTitle, action: nil, keyEquivalent: "")
+            emptyItem.isEnabled = false
+            menu.insertItem(emptyItem, at: secretsRangeStart)
+        } else {
+            for (index, secret) in displaySecrets.enumerated() {
+                let item = NSMenuItem(title: secret.key, action: #selector(copySecret(_:)), keyEquivalent: "")
+                item.target = self
+                item.tag = index
+                item.toolTip = "Click to copy value"
+                secretMenuItems.append(item)
+                menu.insertItem(item, at: secretsRangeStart + index)
+            }
+
+            // Show "N more secrets — search to find" when limited
+            if viewModel.searchText.isEmpty && viewModel.hiddenCount > 0 {
+                let moreItem = NSMenuItem(title: "\(viewModel.hiddenCount) more — type to search", action: nil, keyEquivalent: "")
+                moreItem.isEnabled = false
+                menu.insertItem(moreItem, at: secretsRangeStart + displaySecrets.count)
+            }
+        }
+
+        // Track where secrets end (everything from secretsRangeStart to the separator before "View All")
+        secretsRangeEnd = menu.items.count
+        // Find the separator that follows our secret items
+        for i in secretsRangeStart..<menu.items.count {
+            if menu.items[i].isSeparatorItem {
+                secretsRangeEnd = i
+                break
+            }
+        }
+    }
+
+    /// Only update the secret items section — no flicker, search field keeps focus
+    private func updateSecretItems() {
+        // Remove existing secret items (from end to start to preserve indices)
+        for i in stride(from: secretsRangeEnd - 1, through: secretsRangeStart, by: -1) {
+            menu.removeItem(at: i)
+        }
+        // Insert fresh items
+        insertSecretItems()
+    }
+
     // MARK: - NSMenuDelegate
 
     func menuWillOpen(_ menu: NSMenu) {
         viewModel.searchText = ""
-        // Show cached data instantly — no loader
         rebuildMenu()
 
         // Focus search field
@@ -139,8 +176,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
             Task {
                 await viewModel.loadSecrets()
                 await MainActor.run {
-                    rebuildMenu()
-                    searchField?.becomeFirstResponder()
+                    updateSecretItems()
                 }
             }
         }
@@ -150,12 +186,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
 
     @objc private func searchFieldChanged(_ sender: NSSearchField) {
         viewModel.searchText = sender.stringValue
-        rebuildMenu()
-        // Keep search field focused and text intact
-        searchField?.stringValue = viewModel.searchText
-        DispatchQueue.main.async { [weak self] in
-            self?.searchField?.becomeFirstResponder()
-        }
+        updateSecretItems()
     }
 
     @objc private func copySecret(_ sender: NSMenuItem) {
@@ -176,6 +207,17 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         }
     }
 
+    @objc private func openSecretList() {
+        if secretListWindow == nil || !secretListWindow!.isVisible {
+            let view = SecretListView(viewModel: viewModel) { [weak self] in
+                self?.secretListWindow?.close()
+            }
+            secretListWindow = makeStyledWindow(view: view, width: 660, height: 540)
+        }
+        secretListWindow?.makeKeyAndOrderFront(nil)
+        NSApp.activate(ignoringOtherApps: true)
+    }
+
     @objc private func openAddSecret() {
         if addSecretWindow == nil || !addSecretWindow!.isVisible {
             let view = AddSecretView(viewModel: viewModel) { [weak self] in
@@ -189,8 +231,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
 
     @objc private func openDashboard() {
         let config = AppConfiguration.load()
-        let baseURL = config?.baseURL ?? "https://app.infisical.com"
-        if let url = URL(string: baseURL) {
+        let dashboardURL = config?.dashboardURL ?? "https://app.infisical.com"
+        if let url = URL(string: dashboardURL) {
             NSWorkspace.shared.open(url)
         }
     }

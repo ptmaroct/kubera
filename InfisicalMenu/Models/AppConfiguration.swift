@@ -8,6 +8,7 @@ struct AppConfiguration: Codable {
     var secretPath: String
     var baseURL: String
     var projectName: String?
+    var organizationId: String?
 
     // Keyboard shortcut (nil = use defaults: Cmd+Shift+K)
     var shortcutKeyCode: UInt32?
@@ -34,6 +35,14 @@ struct AppConfiguration: Codable {
     /// Human-readable shortcut string (e.g., "⌘ ⇧ K")
     var shortcutDisplayString: String {
         ShortcutHelper.displayString(keyCode: resolvedKeyCode, modifiers: resolvedModifiers)
+    }
+
+    /// Direct link to the project secrets page on Infisical dashboard
+    var dashboardURL: String {
+        if let orgId = organizationId {
+            return "\(baseURL)/organizations/\(orgId)/projects/secret-management/\(projectId)/overview"
+        }
+        return baseURL
     }
 
     func save() {

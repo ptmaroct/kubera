@@ -41,3 +41,7 @@ struct InfisicalTag: Codable, Identifiable, Hashable {
 struct TagsResponse: Codable {
     let workspaceTags: [InfisicalTag]
 }
+
+struct SecretsListResponse: Codable {
+    let secrets: [SecretItem]
+}
