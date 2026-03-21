@@ -390,15 +390,16 @@ struct VaultTextEditor: View {
                     .font(.system(size: 13))
                     .foregroundColor(Color.vault.text)
                     .scrollContentBackground(.hidden)
-                    .padding(8)
+                    .padding(.horizontal, 8)
+                    .padding(.vertical, 6)
                     .frame(height: CGFloat(lineCount) * 20)
 
                 if text.isEmpty {
                     Text(placeholder)
                         .font(.system(size: 13))
                         .foregroundColor(Color.vault.textTertiary)
-                        .padding(.horizontal, 12)
-                        .padding(.vertical, 12)
+                        .padding(.horizontal, 13)
+                        .padding(.vertical, 9)
                         .allowsHitTesting(false)
                 }
             }

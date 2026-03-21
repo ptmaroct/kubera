@@ -22,11 +22,13 @@ final class AddSecretViewModel: ObservableObject {
     @Published var comment: String = ""
     @Published var newTagName: String = ""
 
+    /// Tags typed by user that don't exist yet — created on submit
+    @Published var pendingTagNames: [String] = []
+
     // MARK: - UI State
 
     @Published var isLoadingProjects: Bool = false
     @Published var isLoadingTags: Bool = false
-    @Published var isCreatingTag: Bool = false
     @Published var isCreating: Bool = false
     @Published var errorMessage: String?
 
@@ -40,26 +42,44 @@ final class AddSecretViewModel: ObservableObject {
         environments.filter { selectedEnvironmentIds.contains($0.id) }
     }
 
-    // MARK: - Load Initial Data (cache-first, no loaders)
+    // MARK: - Load Initial Data (cache-first)
 
     func loadInitialData() async {
         errorMessage = nil
 
-        // 1. Use cached projects instantly
-        let cached = ProjectCache.shared.cachedProjects
+        // 1. Load projects — use cache synchronously, then refresh
+        let cached = ProjectCache.shared.projects
         if !cached.isEmpty {
             projects = cached
             preSelectFromConfig()
+        } else {
+            isLoadingProjects = true
+            let fetched = await ProjectCache.shared.fetchProjects()
+            projects = fetched
+            preSelectFromConfig()
+            isLoadingProjects = false
 
-            // Load cached tags instantly
-            if let projectId = selectedProject?.id {
-                let cachedTags = ProjectCache.shared.cachedTags(for: projectId)
-                if !cachedTags.isEmpty {
-                    tags = cachedTags
-                }
+            if projects.isEmpty {
+                errorMessage = "No projects found"
+                return
             }
+        }
 
-            // Refresh both in background
+        // 2. Load tags — always fetch for the selected project
+        if let projectId = selectedProject?.id {
+            // Show cached tags immediately if available
+            let cachedTags = ProjectCache.shared.cachedTags(for: projectId)
+            tags = cachedTags
+            if cachedTags.isEmpty { isLoadingTags = true }
+
+            // Always fetch fresh
+            let freshTags = await ProjectCache.shared.fetchTags(for: projectId)
+            tags = freshTags
+            isLoadingTags = false
+        }
+
+        // 3. Background refresh projects (non-blocking)
+        if !cached.isEmpty {
             Task {
                 let fresh = await ProjectCache.shared.fetchProjects()
                 if fresh != projects {
@@ -69,34 +89,6 @@ final class AddSecretViewModel: ObservableObject {
                     }
                 }
             }
-            if let projectId = selectedProject?.id {
-                Task {
-                    let freshTags = await ProjectCache.shared.fetchTags(for: projectId)
-                    if freshTags != tags {
-                        tags = freshTags
-                    }
-                }
-            }
-            return
-        }
-
-        // 2. No cache — show loader for first load only
-        isLoadingProjects = true
-        let fetched = await ProjectCache.shared.fetchProjects()
-        projects = fetched
-        preSelectFromConfig()
-        isLoadingProjects = false
-
-        if projects.isEmpty {
-            errorMessage = "No projects found"
-            return
-        }
-
-        // Fetch tags (with loader since first load)
-        if let projectId = selectedProject?.id {
-            isLoadingTags = true
-            tags = await ProjectCache.shared.fetchTags(for: projectId)
-            isLoadingTags = false
         }
     }
 
@@ -119,6 +111,7 @@ final class AddSecretViewModel: ObservableObject {
             selectedEnvironmentIds = []
             tags = []
             selectedTagIds = []
+            pendingTagNames = []
             return
         }
 
@@ -127,14 +120,12 @@ final class AddSecretViewModel: ObservableObject {
             selectedEnvironmentIds = [first.id]
         }
         selectedTagIds = []
+        pendingTagNames = []
 
-        // Load cached tags instantly, refresh in background
         let cachedTags = ProjectCache.shared.cachedTags(for: project.id)
         tags = cachedTags
 
-        if cachedTags.isEmpty {
-            isLoadingTags = true
-        }
+        if cachedTags.isEmpty { isLoadingTags = true }
         Task {
             let fresh = await ProjectCache.shared.fetchTags(for: project.id)
             tags = fresh
@@ -154,52 +145,36 @@ final class AddSecretViewModel: ObservableObject {
         }
     }
 
-    // MARK: - Fetch Tags (unused now, kept for manual refresh)
+    // MARK: - Tag Queueing (local only, no API)
 
-    func fetchTags() async {
-        guard let project = selectedProject else {
-            tags = []
-            return
-        }
-        tags = await ProjectCache.shared.fetchTags(for: project.id)
-    }
-
-    // MARK: - Create Tag
-
-    func createTag() async {
-        guard let project = selectedProject else { return }
+    /// Queue a tag name locally. If it matches an existing tag, select it instead.
+    func queueTag() {
         let name = newTagName.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !name.isEmpty else { return }
 
-        // Check duplicate — auto-select if exists
+        // If tag already exists in API tags, just select it
         if let existing = tags.first(where: { $0.displayName.lowercased() == name.lowercased() }) {
             selectedTagIds.insert(existing.id)
             newTagName = ""
             return
         }
 
-        isCreatingTag = true
-        errorMessage = nil
-
-        do {
-            let baseURL = AppConfiguration.load()?.baseURL ?? AppConfiguration.defaultBaseURL
-            let newTag = try await InfisicalCLIService.createTag(
-                name: name,
-                projectId: project.id,
-                baseURL: baseURL
-            )
-            tags.append(newTag)
-            selectedTagIds.insert(newTag.id)
+        // If already in pending list, skip
+        if pendingTagNames.contains(where: { $0.lowercased() == name.lowercased() }) {
             newTagName = ""
-            // Update cache
-            ProjectCache.shared.addTag(newTag, for: project.id)
-        } catch {
-            errorMessage = error.localizedDescription
+            return
         }
-        isCreatingTag = false
+
+        pendingTagNames.append(name)
+        newTagName = ""
     }
 
-    // MARK: - Create Secret
+    /// Remove a pending tag by name
+    func removePendingTag(_ name: String) {
+        pendingTagNames.removeAll { $0 == name }
+    }
+
+    // MARK: - Create Secret (creates pending tags first, then secret)
 
     func createSecret() async -> Bool {
         guard let project = selectedProject,
@@ -216,22 +191,61 @@ final class AddSecretViewModel: ObservableObject {
         isCreating = true
         errorMessage = nil
 
-        let envsToCreate = selectedEnvironments
         let baseURL = AppConfiguration.load()?.baseURL ?? AppConfiguration.defaultBaseURL
 
-        do {
-            for env in envsToCreate {
-                try await InfisicalCLIService.createSecretViaAPI(
-                    name: key,
-                    value: value,
-                    comment: comment,
-                    tagIds: Array(selectedTagIds),
-                    environment: env.slug,
-                    projectId: project.id,
-                    secretPath: "/",
-                    baseURL: baseURL
-                )
+        // 1. Create any pending tags in PARALLEL
+        var allTagIds = selectedTagIds
+        if !pendingTagNames.isEmpty {
+            let tagNames = pendingTagNames
+            let projectId = project.id
+
+            await withTaskGroup(of: InfisicalTag?.self) { group in
+                for tagName in tagNames {
+                    group.addTask {
+                        try? await InfisicalCLIService.createTag(
+                            name: tagName,
+                            projectId: projectId,
+                            baseURL: baseURL
+                        )
+                    }
+                }
+                for await result in group {
+                    if let newTag = result {
+                        allTagIds.insert(newTag.id)
+                        tags.append(newTag)
+                        ProjectCache.shared.addTag(newTag, for: projectId)
+                    }
+                }
             }
+        }
+
+        // 2. Create the secret in each selected environment in PARALLEL
+        let envsToCreate = selectedEnvironments
+        let secretKey = key
+        let secretValue = value
+        let secretComment = comment
+        let tagIdArray = Array(allTagIds)
+        let projectId = project.id
+
+        do {
+            try await withThrowingTaskGroup(of: Void.self) { group in
+                for env in envsToCreate {
+                    group.addTask {
+                        try await InfisicalCLIService.createSecretViaAPI(
+                            name: secretKey,
+                            value: secretValue,
+                            comment: secretComment,
+                            tagIds: tagIdArray,
+                            environment: env.slug,
+                            projectId: projectId,
+                            secretPath: "/",
+                            baseURL: baseURL
+                        )
+                    }
+                }
+                try await group.waitForAll()
+            }
+            pendingTagNames = []
             isCreating = false
             return true
         } catch {

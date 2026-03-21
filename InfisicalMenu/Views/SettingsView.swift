@@ -201,13 +201,38 @@ struct SettingsView: View {
 
                             // About card
                             glassCard {
-                                settingsRow(
-                                    icon: "info.circle.fill",
-                                    label: "Version"
-                                ) {
-                                    Text("1.0.0")
-                                        .font(.system(size: 12))
-                                        .foregroundColor(.white.opacity(0.4))
+                                VStack(spacing: 12) {
+                                    settingsRow(
+                                        icon: "info.circle.fill",
+                                        label: "Version"
+                                    ) {
+                                        Text("1.0.0")
+                                            .font(.system(size: 12))
+                                            .foregroundColor(.white.opacity(0.4))
+                                    }
+
+                                    Divider().opacity(0.2)
+
+                                    settingsRow(
+                                        icon: "link",
+                                        label: "Source"
+                                    ) {
+                                        Button {
+                                            if let url = URL(string: "https://github.com/ptmaroct/infiscal-macos") {
+                                                NSWorkspace.shared.open(url)
+                                            }
+                                        } label: {
+                                            HStack(spacing: 4) {
+                                                Text("GitHub")
+                                                    .font(.system(size: 12))
+                                                    .foregroundColor(Color.vault.accent)
+                                                Image(systemName: "arrow.up.right")
+                                                    .font(.system(size: 8, weight: .semibold))
+                                                    .foregroundColor(Color.vault.accent.opacity(0.6))
+                                            }
+                                        }
+                                        .buttonStyle(.plain)
+                                    }
                                 }
                             }
                         }
@@ -333,25 +358,21 @@ struct SettingsView: View {
     // MARK: - Data
 
     private func loadData() {
-        Task {
-            // Use cache first
-            let cached = ProjectCache.shared.cachedProjects
-            if !cached.isEmpty {
-                projects = cached
-                applyConfig()
-                isLoading = false
-
-                // Background refresh
-                Task {
-                    let fresh = await ProjectCache.shared.fetchProjects()
-                    if fresh != projects { projects = fresh }
-                }
-                return
-            }
-
-            isLoading = true
-            projects = await ProjectCache.shared.fetchProjects()
+        // Show cached data SYNCHRONOUSLY — no async needed
+        let cached = ProjectCache.shared.projects
+        if !cached.isEmpty {
+            projects = cached
             applyConfig()
+            isLoading = false
+        }
+
+        // Then refresh in background
+        Task {
+            let fresh = await ProjectCache.shared.fetchProjects()
+            if projects.isEmpty || fresh != projects {
+                projects = fresh
+                applyConfig()
+            }
             isLoading = false
         }
     }
