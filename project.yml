@@ -1,0 +1,30 @@
+name: InfisicalMenu
+options:
+  bundleIdPrefix: com.infisical
+  deploymentTarget:
+    macOS: "13.0"
+  xcodeVersion: "15.0"
+  generateEmptyDirectories: true
+
+targets:
+  InfisicalMenu:
+    type: application
+    platform: macOS
+    sources:
+      - InfisicalMenu
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: com.infisical.InfisicalMenu
+        PRODUCT_NAME: InfisicalMenu
+        MARKETING_VERSION: "1.0.0"
+        CURRENT_PROJECT_VERSION: "1"
+        SWIFT_VERSION: "5.9"
+        MACOSX_DEPLOYMENT_TARGET: "13.0"
+        INFOPLIST_FILE: InfisicalMenu/Info.plist
+        GENERATE_INFOPLIST_FILE: false
+        CODE_SIGN_IDENTITY: "-"
+        CODE_SIGN_STYLE: Manual
+    entitlements:
+      path: InfisicalMenu/InfisicalMenu.entitlements
+      properties:
+        com.apple.security.app-sandbox: false

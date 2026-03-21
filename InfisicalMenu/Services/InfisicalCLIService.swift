@@ -1,0 +1,180 @@
+import Foundation
+
+enum CLIError: LocalizedError {
+    case notInstalled
+    case notLoggedIn
+    case executionFailed(String)
+    case parseError(String)
+
+    var errorDescription: String? {
+        switch self {
+        case .notInstalled:
+            return "Infisical CLI is not installed. Install it with: brew install infisical"
+        case .notLoggedIn:
+            return "Not logged in. Run 'infisical login' in your terminal first."
+        case .executionFailed(let msg):
+            return "CLI error: \(msg)"
+        case .parseError(let msg):
+            return "Failed to parse CLI output: \(msg)"
+        }
+    }
+}
+
+struct InfisicalCLIService {
+
+    /// Find the infisical binary path
+    private static func cliPath() -> String? {
+        let knownPaths = [
+            "/opt/homebrew/bin/infisical",
+            "/usr/local/bin/infisical",
+            "/usr/bin/infisical"
+        ]
+        for path in knownPaths {
+            if FileManager.default.fileExists(atPath: path) {
+                return path
+            }
+        }
+        // Try `which`
+        if let result = try? runShell("/bin/zsh", arguments: ["-c", "which infisical"]),
+           !result.isEmpty {
+            return result.trimmingCharacters(in: .whitespacesAndNewlines)
+        }
+        return nil
+    }
+
+    /// Check if CLI is installed
+    static func isInstalled() -> Bool {
+        cliPath() != nil
+    }
+
+    /// Check if user is logged in by running `infisical user get token`
+    static func isLoggedIn() async -> Bool {
+        guard let cli = cliPath() else { return false }
+        do {
+            let output = try runShell(cli, arguments: ["user", "get", "token"])
+            // If we get a token back, user is logged in
+            return output.contains("Token:")
+        } catch {
+            return false
+        }
+    }
+
+    /// List all secrets as JSON using `infisical export`
+    static func listSecrets(environment: String, projectId: String, secretPath: String = "/") async throws -> [SecretItem] {
+        guard let cli = cliPath() else { throw CLIError.notInstalled }
+
+        var args = ["export", "--format=json", "--silent"]
+        args.append("--env=\(environment)")
+        args.append("--projectId=\(projectId)")
+        if secretPath != "/" {
+            args.append("--path=\(secretPath)")
+        }
+
+        let output: String
+        do {
+            output = try runShell(cli, arguments: args)
+        } catch {
+            throw CLIError.executionFailed(error.localizedDescription)
+        }
+
+        guard !output.isEmpty else {
+            return []
+        }
+
+        // Parse JSON array
+        guard let data = output.data(using: .utf8) else {
+            throw CLIError.parseError("Invalid UTF-8 output")
+        }
+
+        do {
+            let secrets = try JSONDecoder().decode([SecretItem].self, from: data)
+            return secrets
+        } catch {
+            throw CLIError.parseError(error.localizedDescription)
+        }
+    }
+
+    /// Create a new secret using `infisical secrets set`
+    static func createSecret(key: String, value: String, environment: String, projectId: String, secretPath: String = "/") async throws {
+        guard let cli = cliPath() else { throw CLIError.notInstalled }
+
+        var args = ["secrets", "set", "\(key)=\(value)"]
+        args.append("--env=\(environment)")
+        args.append("--projectId=\(projectId)")
+        if secretPath != "/" {
+            args.append("--path=\(secretPath)")
+        }
+
+        do {
+            _ = try runShell(cli, arguments: args)
+        } catch {
+            throw CLIError.executionFailed(error.localizedDescription)
+        }
+    }
+
+    /// Get the logged-in user's access token from CLI
+    static func getToken() -> String? {
+        guard let cli = cliPath() else { return nil }
+        guard let output = try? runShell(cli, arguments: ["user", "get", "token"]) else { return nil }
+        // Parse "Token: <jwt>" from output
+        for line in output.components(separatedBy: "\n") {
+            if line.hasPrefix("Token:") {
+                return line.replacingOccurrences(of: "Token:", with: "").trimmingCharacters(in: .whitespaces)
+            }
+        }
+        return nil
+    }
+
+    /// Fetch organizations for the logged-in user via API
+    static func fetchOrganizations(baseURL: String = "https://app.infisical.com") async throws -> [InfisicalOrg] {
+        guard let token = getToken() else { throw CLIError.notLoggedIn }
+        let url = URL(string: "\(baseURL)/api/v2/users/me/organizations")!
+        var request = URLRequest(url: url)
+        request.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
+        let (data, _) = try await URLSession.shared.data(for: request)
+        let response = try JSONDecoder().decode(OrgsResponse.self, from: data)
+        return response.organizations
+    }
+
+    /// Fetch workspaces (projects) for an organization via API
+    static func fetchProjects(orgId: String, baseURL: String = "https://app.infisical.com") async throws -> [InfisicalProject] {
+        guard let token = getToken() else { throw CLIError.notLoggedIn }
+        let url = URL(string: "\(baseURL)/api/v2/organizations/\(orgId)/workspaces")!
+        var request = URLRequest(url: url)
+        request.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
+        let (data, _) = try await URLSession.shared.data(for: request)
+        let response = try JSONDecoder().decode(WorkspacesResponse.self, from: data)
+        return response.workspaces
+    }
+
+    // MARK: - Shell Execution
+
+    private static func runShell(_ path: String, arguments: [String]) throws -> String {
+        let process = Process()
+        let pipe = Pipe()
+
+        process.executableURL = URL(fileURLWithPath: path)
+        process.arguments = arguments
+        process.standardOutput = pipe
+        process.standardError = pipe
+
+        // Inherit PATH so CLI can find its dependencies
+        var env = ProcessInfo.processInfo.environment
+        if env["PATH"] == nil {
+            env["PATH"] = "/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin"
+        }
+        process.environment = env
+
+        try process.run()
+        process.waitUntilExit()
+
+        let data = pipe.fileHandleForReading.readDataToEndOfFile()
+        let output = String(data: data, encoding: .utf8) ?? ""
+
+        if process.terminationStatus != 0 {
+            throw CLIError.executionFailed(output.trimmingCharacters(in: .whitespacesAndNewlines))
+        }
+
+        return output.trimmingCharacters(in: .whitespacesAndNewlines)
+    }
+}

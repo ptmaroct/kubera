@@ -1,0 +1,34 @@
+# Xcode
+*.xcodeproj/
+*.xcworkspace/
+xcuserdata/
+*.xcscmblueprint
+*.xccheckout
+
+# Build
+.build/
+build/
+DerivedData/
+*.app
+
+# Swift Package Manager
+.swiftpm/
+Package.resolved
+Packages/
+
+# macOS
+.DS_Store
+*.swp
+*~
+
+# IDE
+.idea/
+.vscode/
+
+# Archives
+*.ipa
+*.dSYM.zip
+*.dSYM
+
+# Claude
+.claude/
