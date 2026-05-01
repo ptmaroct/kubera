@@ -66,10 +66,10 @@ cat <<EOF
 cask "kubera" do
   version "$VERSION"
   sha256 "$SHA"
-  url "https://github.com/ptmaroct/infiscal-macos/releases/download/v#{version}/Kubera.dmg"
+  url "https://github.com/ptmaroct/kubera/releases/download/v#{version}/Kubera.dmg"
   name "Kubera"
   desc "Native macOS menubar app for Infisical secrets"
-  homepage "https://github.com/ptmaroct/infiscal-macos"
+  homepage "https://github.com/ptmaroct/kubera"
 
   depends_on formula: "infisical"
   depends_on macos: ">= :ventura"

@@ -288,7 +288,7 @@ struct SettingsView: View {
                                         label: "Source"
                                     ) {
                                         Button {
-                                            if let url = URL(string: "https://github.com/ptmaroct/infiscal-macos") {
+                                            if let url = URL(string: "https://github.com/ptmaroct/kubera") {
                                                 NSWorkspace.shared.open(url)
                                             }
                                         } label: {

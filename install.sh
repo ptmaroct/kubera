@@ -1,9 +1,9 @@
 #!/usr/bin/env bash
 # Kubera installer
-# Usage: curl -fsSL https://raw.githubusercontent.com/ptmaroct/infiscal-macos/main/install.sh | bash
+# Usage: curl -fsSL https://raw.githubusercontent.com/ptmaroct/kubera/main/install.sh | bash
 set -euo pipefail
 
-REPO="ptmaroct/infiscal-macos"
+REPO="ptmaroct/kubera"
 DMG_URL="https://github.com/${REPO}/releases/latest/download/Kubera.dmg"
 APP_NAME="Kubera.app"
 INSTALL_DIR="/Applications"

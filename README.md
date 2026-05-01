@@ -38,7 +38,7 @@ A native macOS menubar app for quickly searching and managing secrets via the [I
 ### One-liner (recommended)
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/ptmaroct/infiscal-macos/main/install.sh | bash
+curl -fsSL https://raw.githubusercontent.com/ptmaroct/kubera/main/install.sh | bash
 ```
 
 Installs the Infisical CLI (via Homebrew) if missing, downloads the latest Kubera DMG, drops it into `/Applications`, and strips the macOS quarantine flag so the unsigned app launches cleanly.
@@ -54,7 +54,7 @@ The cask declares `infisical` as a dependency, so the CLI is pulled in automatic
 
 ### Manual download
 
-1. Grab the latest `Kubera.dmg` from [Releases](https://github.com/ptmaroct/infiscal-macos/releases).
+1. Grab the latest `Kubera.dmg` from [Releases](https://github.com/ptmaroct/kubera/releases).
 2. Mount it and drag `Kubera.app` to `/Applications`.
 3. Because the build is currently unsigned, run this once to clear Gatekeeper's "App is damaged" warning:
 
