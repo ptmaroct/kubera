@@ -76,6 +76,7 @@ struct Import: AsyncParsableCommand {
                     try await store.updateSecret(
                         name: item.key, value: item.value,
                         comment: item.comment ?? "", tagIds: [],
+                        tagsExplicit: false,
                         expiryDate: parsedExpiry(item),
                         serviceURL: parsedServiceURL(item),
                         metadataExplicit: true,

@@ -112,6 +112,7 @@ enum BackupCoordinator {
                         try await store.updateSecret(
                             name: item.key, value: item.value,
                             comment: item.comment ?? "", tagIds: [],
+                            tagsExplicit: false,
                             expiryDate: expiry, serviceURL: svc, metadataExplicit: true,
                             environment: item.environment, projectId: item.projectId,
                             secretPath: item.secretPath

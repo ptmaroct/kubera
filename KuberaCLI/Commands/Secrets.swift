@@ -177,6 +177,7 @@ struct Set: AsyncParsableCommand {
         if existing.contains(where: { $0.key == key }) {
             try await store.updateSecret(
                 name: key, value: resolvedValue, comment: comment, tagIds: tag,
+                tagsExplicit: !tag.isEmpty,
                 expiryDate: nil, serviceURL: nil, metadataExplicit: false,
                 environment: environment, projectId: cfg.projectId,
                 secretPath: secretPath
