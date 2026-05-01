@@ -24,6 +24,12 @@ struct SettingsView: View {
     @State private var touchIDTimeout: TimeoutPreset = .fifteenMinutes
     @State private var touchIDAvailable: Bool = false
 
+    // Expiry notification state
+    @State private var expiryNotificationsEnabled: Bool = false
+    @State private var expiryNotify7Days: Bool = true
+    @State private var expiryNotify1Day: Bool = true
+    @State private var expiryNotifyAtExpiry: Bool = true
+
     var body: some View {
         ZStack {
             // Glass background
@@ -269,6 +275,65 @@ struct SettingsView: View {
                                 }
                             }
 
+                            // Expiry reminders card
+                            glassCard {
+                                VStack(spacing: 12) {
+                                    settingsRow(
+                                        icon: "bell.badge",
+                                        label: "Expiry Reminders"
+                                    ) {
+                                        Toggle("", isOn: $expiryNotificationsEnabled)
+                                            .toggleStyle(.switch)
+                                            .controlSize(.small)
+                                            .tint(Color.vault.accent)
+                                    }
+
+                                    if expiryNotificationsEnabled {
+                                        Divider().opacity(0.2)
+
+                                        settingsRow(
+                                            icon: "calendar.badge.clock",
+                                            label: "7 days before"
+                                        ) {
+                                            Toggle("", isOn: $expiryNotify7Days)
+                                                .toggleStyle(.switch)
+                                                .controlSize(.small)
+                                                .tint(Color.vault.accent)
+                                        }
+
+                                        settingsRow(
+                                            icon: "calendar",
+                                            label: "1 day before"
+                                        ) {
+                                            Toggle("", isOn: $expiryNotify1Day)
+                                                .toggleStyle(.switch)
+                                                .controlSize(.small)
+                                                .tint(Color.vault.accent)
+                                        }
+
+                                        settingsRow(
+                                            icon: "exclamationmark.circle",
+                                            label: "On expiry day"
+                                        ) {
+                                            Toggle("", isOn: $expiryNotifyAtExpiry)
+                                                .toggleStyle(.switch)
+                                                .controlSize(.small)
+                                                .tint(Color.vault.accent)
+                                        }
+
+                                        HStack(spacing: 4) {
+                                            Image(systemName: "info.circle")
+                                                .font(.system(size: 9))
+                                            Text("Local macOS notifications fire at 9am for secrets with an expiry date.")
+                                                .font(.system(size: 10))
+                                        }
+                                        .foregroundColor(.white.opacity(0.35))
+                                        .frame(maxWidth: .infinity, alignment: .leading)
+                                        .padding(.leading, 28)
+                                    }
+                                }
+                            }
+
                             // About card
                             glassCard {
                                 VStack(spacing: 12) {
@@ -372,7 +437,12 @@ struct SettingsView: View {
             loadData()
             loadShortcut()
             loadTouchIDSettings()
+            loadExpiryNotificationSettings()
         }
+        .onChange(of: expiryNotificationsEnabled) { _ in saveExpiryNotificationSettings() }
+        .onChange(of: expiryNotify7Days) { _ in saveExpiryNotificationSettings() }
+        .onChange(of: expiryNotify1Day) { _ in saveExpiryNotificationSettings() }
+        .onChange(of: expiryNotifyAtExpiry) { _ in saveExpiryNotificationSettings() }
         .onDisappear {
             stopRecording()
         }
@@ -492,6 +562,38 @@ struct SettingsView: View {
         let settings = TouchIDSettings.load()
         touchIDEnabled = settings.isEnabled
         touchIDTimeout = settings.timeoutPreset
+    }
+
+    // MARK: - Expiry Notifications
+
+    private func loadExpiryNotificationSettings() {
+        let settings = ExpiryNotificationSettings.load()
+        expiryNotificationsEnabled = settings.enabled
+        expiryNotify7Days = settings.notify7Days
+        expiryNotify1Day = settings.notify1Day
+        expiryNotifyAtExpiry = settings.notifyAtExpiry
+    }
+
+    private func saveExpiryNotificationSettings() {
+        let settings = ExpiryNotificationSettings(
+            enabled: expiryNotificationsEnabled,
+            notify7Days: expiryNotify7Days,
+            notify1Day: expiryNotify1Day,
+            notifyAtExpiry: expiryNotifyAtExpiry
+        )
+        settings.save()
+
+        // Reconcile pending notifications immediately so toggles take effect.
+        let secrets = viewModel.secrets
+        let env = AppConfiguration.load()?.environment ?? AppConfiguration.defaultEnvironment
+        if settings.enabled {
+            Task {
+                await ExpiryNotificationScheduler.shared.requestAuthorizationIfNeeded()
+                ExpiryNotificationScheduler.shared.reconcile(secrets: secrets, environment: env)
+            }
+        } else {
+            ExpiryNotificationScheduler.shared.cancelAll()
+        }
     }
 
     // MARK: - Save

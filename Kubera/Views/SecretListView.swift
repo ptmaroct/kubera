@@ -45,6 +45,8 @@ struct SecretListView: View {
                 secret: secret,
                 value: $listVM.editValue,
                 comment: $listVM.editComment,
+                expiryDate: $listVM.editExpiryDate,
+                serviceURL: $listVM.editServiceURL,
                 isUpdating: listVM.isUpdating,
                 onSave: {
                     Task { await listVM.saveEdit() }
@@ -341,15 +343,27 @@ struct EditSecretSheet: View {
     let secret: SecretItem
     @Binding var value: String
     @Binding var comment: String
+    @Binding var expiryDate: Date?
+    @Binding var serviceURL: String
     let isUpdating: Bool
     let onSave: () -> Void
     let onCancel: () -> Void
+
+    private var parsedURL: URL? {
+        let trimmed = serviceURL.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty,
+              let url = URL(string: trimmed),
+              let scheme = url.scheme?.lowercased(),
+              scheme == "http" || scheme == "https",
+              url.host != nil else { return nil }
+        return url
+    }
 
     var body: some View {
         ZStack {
             Color.vault.bg.ignoresSafeArea()
 
-            VStack(alignment: .leading, spacing: 20) {
+            VStack(alignment: .leading, spacing: 18) {
                 // Header
                 VStack(alignment: .leading, spacing: 4) {
                     Text("Edit Secret")
@@ -361,24 +375,123 @@ struct EditSecretSheet: View {
                         .foregroundColor(Color.vault.accent)
                 }
 
-                // Value field
-                VaultTextField(
-                    label: "Value",
-                    text: $value,
-                    isMonospaced: true,
-                    isSecure: true,
-                    placeholder: "Secret value"
-                )
+                ScrollView(.vertical, showsIndicators: false) {
+                    VStack(alignment: .leading, spacing: 14) {
+                        // Value field
+                        VaultTextField(
+                            label: "Value",
+                            text: $value,
+                            isMonospaced: true,
+                            isSecure: true,
+                            placeholder: "Secret value"
+                        )
 
-                // Comment field
-                VaultTextEditor(
-                    label: "Comment",
-                    text: $comment,
-                    placeholder: "Optional description...",
-                    lineCount: 3
-                )
+                        // Comment field
+                        VaultTextEditor(
+                            label: "Comment",
+                            text: $comment,
+                            placeholder: "Optional description...",
+                            lineCount: 2
+                        )
 
-                Spacer()
+                        // Expiry
+                        VStack(alignment: .leading, spacing: 6) {
+                            Text("EXPIRES")
+                                .font(.system(size: 10, weight: .semibold))
+                                .foregroundColor(Color.vault.textSecondary)
+                                .tracking(1.2)
+
+                            HStack(spacing: 8) {
+                                Image(systemName: "calendar")
+                                    .font(.system(size: 11))
+                                    .foregroundColor(Color.vault.textTertiary)
+
+                                if let date = expiryDate {
+                                    DatePicker(
+                                        "",
+                                        selection: Binding(
+                                            get: { date },
+                                            set: { expiryDate = $0 }
+                                        ),
+                                        displayedComponents: .date
+                                    )
+                                    .labelsHidden()
+                                    .datePickerStyle(.compact)
+
+                                    Spacer()
+
+                                    Button {
+                                        expiryDate = nil
+                                    } label: {
+                                        Image(systemName: "xmark.circle.fill")
+                                            .font(.system(size: 12))
+                                            .foregroundColor(Color.vault.textTertiary)
+                                    }
+                                    .buttonStyle(.plain)
+                                    .help("Clear expiry")
+                                } else {
+                                    Button {
+                                        expiryDate = Calendar.current.date(byAdding: .day, value: 90, to: Date())
+                                    } label: {
+                                        Text("Set expiry date")
+                                            .font(.system(size: 12))
+                                            .foregroundColor(Color.vault.accent)
+                                    }
+                                    .buttonStyle(.plain)
+                                    Spacer()
+                                }
+                            }
+                            .padding(.horizontal, 12)
+                            .padding(.vertical, 8)
+                            .background(Color.vault.bg)
+                            .cornerRadius(8)
+                            .overlay(
+                                RoundedRectangle(cornerRadius: 8)
+                                    .stroke(Color.vault.border, lineWidth: 1)
+                            )
+                        }
+
+                        // Service URL
+                        VStack(alignment: .leading, spacing: 6) {
+                            Text("SERVICE URL")
+                                .font(.system(size: 10, weight: .semibold))
+                                .foregroundColor(Color.vault.textSecondary)
+                                .tracking(1.2)
+
+                            HStack(spacing: 0) {
+                                Image(systemName: "link")
+                                    .font(.system(size: 11))
+                                    .foregroundColor(Color.vault.textTertiary)
+                                    .padding(.trailing, 8)
+
+                                TextField("https://platform.example.com/api-keys", text: $serviceURL)
+                                    .font(.system(size: 13))
+                                    .foregroundColor(Color.vault.text)
+                                    .textFieldStyle(.plain)
+
+                                if let url = parsedURL {
+                                    Button {
+                                        NSWorkspace.shared.open(url)
+                                    } label: {
+                                        Image(systemName: "arrow.up.right.square")
+                                            .font(.system(size: 12))
+                                            .foregroundColor(Color.vault.accent)
+                                    }
+                                    .buttonStyle(.plain)
+                                    .help("Open in browser")
+                                }
+                            }
+                            .padding(.horizontal, 12)
+                            .padding(.vertical, 8)
+                            .background(Color.vault.bg)
+                            .cornerRadius(8)
+                            .overlay(
+                                RoundedRectangle(cornerRadius: 8)
+                                    .stroke(Color.vault.border, lineWidth: 1)
+                            )
+                        }
+                    }
+                }
 
                 // Actions
                 HStack {
@@ -400,6 +513,6 @@ struct EditSecretSheet: View {
             }
             .padding(28)
         }
-        .frame(width: 440, height: 360)
+        .frame(width: 460, height: 560)
     }
 }

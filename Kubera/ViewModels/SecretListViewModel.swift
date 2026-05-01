@@ -9,6 +9,8 @@ final class SecretListViewModel: ObservableObject {
     @Published var editingSecret: SecretItem?
     @Published var editValue: String = ""
     @Published var editComment: String = ""
+    @Published var editExpiryDate: Date? = nil
+    @Published var editServiceURL: String = ""
     @Published var deletingSecret: SecretItem?
     @Published var isUpdating: Bool = false
     @Published var isDeleting: Bool = false
@@ -69,14 +71,42 @@ final class SecretListViewModel: ObservableObject {
         editingSecret = secret
         editValue = secret.value
         editComment = secret.comment ?? ""
+        editExpiryDate = secret.expiryDate
+        editServiceURL = secret.serviceURL?.absoluteString ?? ""
     }
 
     func saveEdit() async -> Bool {
         guard let secret = editingSecret else { return false }
         isUpdating = true
-        let success = await appViewModel.updateSecret(secret, newValue: editValue, newComment: editComment)
+        let trimmedURL = editServiceURL.trimmingCharacters(in: .whitespacesAndNewlines)
+        let urlArg: String? = trimmedURL.isEmpty ? nil : trimmedURL
+        let success = await appViewModel.updateSecret(
+            secret,
+            newValue: editValue,
+            newComment: editComment,
+            newExpiry: editExpiryDate,
+            newServiceURL: urlArg
+        )
         isUpdating = false
         if success {
+            // Reschedule notifications immediately for this (id, env)
+            if let env = AppConfiguration.load()?.environment {
+                let updated = SecretItem(
+                    id: secret.id,
+                    key: secret.key,
+                    value: editValue,
+                    type: secret.type,
+                    comment: editComment,
+                    version: secret.version,
+                    tags: secret.tags,
+                    secretMetadata: buildSecretMetadataPayload(
+                        expiryDate: editExpiryDate, serviceURL: urlArg
+                    ).map { SecretMetadataEntry(key: $0["key"] ?? "", value: $0["value"] ?? "") },
+                    createdAt: secret.createdAt,
+                    updatedAt: secret.updatedAt
+                )
+                ExpiryNotificationScheduler.shared.schedule(secret: updated, environment: env)
+            }
             editingSecret = nil
         }
         return success

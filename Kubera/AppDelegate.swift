@@ -25,6 +25,15 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         setupMenu()
         setupKeyboardShortcut()
 
+        // Local notification scheduler — install delegate, request auth lazily
+        // when the user actually enables expiry reminders in Settings.
+        ExpiryNotificationScheduler.shared.installDelegate()
+        if ExpiryNotificationSettings.load().enabled {
+            Task {
+                await ExpiryNotificationScheduler.shared.requestAuthorizationIfNeeded()
+            }
+        }
+
         if !viewModel.isConfigured {
             showOnboarding()
         }

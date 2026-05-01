@@ -82,6 +82,9 @@ final class AppViewModel: ObservableObject {
             )
             secrets = fresh
             cacheSecrets(fresh)
+            ExpiryNotificationScheduler.shared.reconcile(
+                secrets: fresh, environment: config.environment
+            )
         } catch {
             // Only show error if we have no data to display
             if secrets.isEmpty {
@@ -117,8 +120,15 @@ final class AppViewModel: ObservableObject {
         }
     }
 
-    /// Update an existing secret's value and comment
-    func updateSecret(_ secret: SecretItem, newValue: String, newComment: String) async -> Bool {
+    /// Update an existing secret's value, comment, expiry, and service URL.
+    /// Pass nil for `newExpiry` / `newServiceURL` to clear them (metadata is rewritten on every save).
+    func updateSecret(
+        _ secret: SecretItem,
+        newValue: String,
+        newComment: String,
+        newExpiry: Date?,
+        newServiceURL: String?
+    ) async -> Bool {
         guard let config = AppConfiguration.load() else { return false }
 
         do {
@@ -126,6 +136,9 @@ final class AppViewModel: ObservableObject {
                 name: secret.key,
                 value: newValue,
                 comment: newComment,
+                expiryDate: newExpiry,
+                serviceURL: newServiceURL,
+                metadataExplicit: true,
                 environment: config.environment,
                 projectId: config.projectId,
                 secretPath: config.secretPath,
