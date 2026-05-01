@@ -89,8 +89,10 @@ final class SecretListViewModel: ObservableObject {
         )
         isUpdating = false
         if success {
-            // Reschedule notifications immediately for this (id, env)
-            if let env = AppConfiguration.load()?.environment {
+            // Reschedule notifications immediately for this (id, env).
+            let configEnv = AppConfiguration.load()?.environment ?? AppConfiguration.defaultEnvironment
+            let envForSchedule = secret.environment ?? configEnv
+            if envForSchedule != AppConfiguration.allEnvironmentsSentinel {
                 let updated = SecretItem(
                     id: secret.id,
                     key: secret.key,
@@ -103,9 +105,10 @@ final class SecretListViewModel: ObservableObject {
                         expiryDate: editExpiryDate, serviceURL: urlArg
                     ).map { SecretMetadataEntry(key: $0["key"] ?? "", value: $0["value"] ?? "") },
                     createdAt: secret.createdAt,
-                    updatedAt: secret.updatedAt
+                    updatedAt: secret.updatedAt,
+                    environment: envForSchedule
                 )
-                ExpiryNotificationScheduler.shared.schedule(secret: updated, environment: env)
+                ExpiryNotificationScheduler.shared.schedule(secret: updated, environment: envForSchedule)
             }
             editingSecret = nil
         }

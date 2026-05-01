@@ -37,6 +37,11 @@ struct SecretItem: Codable, Identifiable, Hashable {
     let createdAt: String?
     let updatedAt: String?
 
+    /// Environment slug this secret was fetched from. Populated client-side after
+    /// fetch (not part of the API response) so the same key can appear in multiple
+    /// envs when "All Environments" mode is active.
+    var environment: String?
+
     enum CodingKeys: String, CodingKey {
         case id = "_id"
         case key = "secretKey"
@@ -56,7 +61,8 @@ struct SecretItem: Codable, Identifiable, Hashable {
         tags: [SecretTag]? = nil,
         secretMetadata: [SecretMetadataEntry]? = nil,
         createdAt: String? = nil,
-        updatedAt: String? = nil
+        updatedAt: String? = nil,
+        environment: String? = nil
     ) {
         self.id = id
         self.key = key
@@ -68,6 +74,7 @@ struct SecretItem: Codable, Identifiable, Hashable {
         self.secretMetadata = secretMetadata
         self.createdAt = createdAt
         self.updatedAt = updatedAt
+        self.environment = environment
     }
 
     // MARK: - Metadata helpers

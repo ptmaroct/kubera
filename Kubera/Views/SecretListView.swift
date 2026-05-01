@@ -238,11 +238,17 @@ struct SecretRow: View {
         HStack(alignment: .top, spacing: 12) {
             // Left: key, comment, tags
             VStack(alignment: .leading, spacing: 6) {
-                // Key name
-                Text(secret.key)
-                    .font(.system(size: 13, weight: .semibold, design: .monospaced))
-                    .foregroundColor(Color.vault.text)
-                    .lineLimit(1)
+                // Key name + env badge
+                HStack(spacing: 6) {
+                    Text(secret.key)
+                        .font(.system(size: 13, weight: .semibold, design: .monospaced))
+                        .foregroundColor(Color.vault.text)
+                        .lineLimit(1)
+
+                    if let env = secret.environment {
+                        EnvBadge(slug: env)
+                    }
+                }
 
                 // Comment + Tags row
                 HStack(spacing: 8) {
@@ -318,6 +324,47 @@ struct SecretRow: View {
         .onHover { hovering in
             isHovered = hovering
         }
+    }
+}
+
+// MARK: - Environment Badge
+
+struct EnvBadge: View {
+    let slug: String
+
+    var body: some View {
+        Text(slug.uppercased())
+            .font(.system(size: 9, weight: .bold, design: .rounded))
+            .tracking(0.5)
+            .foregroundColor(EnvBadge.foreground(for: slug))
+            .padding(.horizontal, 6)
+            .padding(.vertical, 2)
+            .background(EnvBadge.background(for: slug))
+            .cornerRadius(4)
+            .overlay(
+                RoundedRectangle(cornerRadius: 4)
+                    .stroke(EnvBadge.foreground(for: slug).opacity(0.4), lineWidth: 1)
+            )
+    }
+
+    /// Color derived from env slug. Well-known names get curated colors;
+    /// anything else hashes to a stable hue so different envs stay distinguishable.
+    static func foreground(for slug: String) -> Color {
+        let s = slug.lowercased()
+        switch s {
+        case "prod", "production": return Color(red: 0.96, green: 0.42, blue: 0.42)
+        case "staging", "stage", "stg": return Color(red: 0.95, green: 0.75, blue: 0.30)
+        case "dev", "development": return Color(red: 0.40, green: 0.78, blue: 0.50)
+        case "test", "testing", "qa": return Color(red: 0.55, green: 0.72, blue: 0.95)
+        case "preview": return Color(red: 0.78, green: 0.55, blue: 0.95)
+        default:
+            let hue = Double(abs(s.hashValue) % 360) / 360.0
+            return Color(hue: hue, saturation: 0.55, brightness: 0.85)
+        }
+    }
+
+    static func background(for slug: String) -> Color {
+        foreground(for: slug).opacity(0.18)
     }
 }
 

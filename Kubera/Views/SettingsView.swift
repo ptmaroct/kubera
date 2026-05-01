@@ -8,6 +8,7 @@ struct SettingsView: View {
     @State private var projects: [InfisicalProject] = []
     @State private var selectedProject: InfisicalProject?
     @State private var selectedEnvironment: InfisicalEnvironment?
+    @State private var allEnvironmentsSelected: Bool = false
     @State private var secretPath: String = "/"
     @State private var isLoading = true
     @State private var statusMessage: String?
@@ -81,6 +82,7 @@ struct SettingsView: View {
                                                 Button {
                                                     selectedProject = project
                                                     selectedEnvironment = project.environments.first
+                                                    allEnvironmentsSelected = false
                                                 } label: {
                                                     HStack {
                                                         Text(project.name)
@@ -113,13 +115,26 @@ struct SettingsView: View {
                                     ) {
                                         if let envs = selectedProject?.environments, !envs.isEmpty {
                                             Menu {
+                                                Button {
+                                                    allEnvironmentsSelected = true
+                                                    selectedEnvironment = nil
+                                                } label: {
+                                                    HStack {
+                                                        Text("All Environments")
+                                                        if allEnvironmentsSelected {
+                                                            Image(systemName: "checkmark")
+                                                        }
+                                                    }
+                                                }
+                                                Divider()
                                                 ForEach(envs) { env in
                                                     Button {
+                                                        allEnvironmentsSelected = false
                                                         selectedEnvironment = env
                                                     } label: {
                                                         HStack {
                                                             Text(env.name)
-                                                            if selectedEnvironment?.id == env.id {
+                                                            if !allEnvironmentsSelected && selectedEnvironment?.id == env.id {
                                                                 Image(systemName: "checkmark")
                                                             }
                                                         }
@@ -127,7 +142,9 @@ struct SettingsView: View {
                                                 }
                                             } label: {
                                                 HStack(spacing: 4) {
-                                                    Text(selectedEnvironment?.name ?? "Select...")
+                                                    Text(allEnvironmentsSelected
+                                                         ? "All Environments"
+                                                         : (selectedEnvironment?.name ?? "Select..."))
                                                         .font(.system(size: 13))
                                                         .foregroundColor(.white.opacity(0.85))
                                                     Image(systemName: "chevron.up.chevron.down")
@@ -425,8 +442,8 @@ struct SettingsView: View {
                         .cornerRadius(10)
                 }
                 .buttonStyle(.plain)
-                .disabled(selectedProject == nil || selectedEnvironment == nil)
-                .opacity(selectedProject == nil || selectedEnvironment == nil ? 0.4 : 1)
+                .disabled(selectedProject == nil || (!allEnvironmentsSelected && selectedEnvironment == nil))
+                .opacity(selectedProject == nil || (!allEnvironmentsSelected && selectedEnvironment == nil) ? 0.4 : 1)
                 .padding(.horizontal, 24)
                 .padding(.bottom, 20)
             }
@@ -549,7 +566,13 @@ struct SettingsView: View {
         if let config = AppConfiguration.load() {
             selectedProject = projects.first(where: { $0.id == config.projectId })
             if let project = selectedProject {
-                selectedEnvironment = project.environments.first(where: { $0.slug == config.environment })
+                if config.isAllEnvironments {
+                    allEnvironmentsSelected = true
+                    selectedEnvironment = nil
+                } else {
+                    allEnvironmentsSelected = false
+                    selectedEnvironment = project.environments.first(where: { $0.slug == config.environment })
+                }
             }
             secretPath = config.secretPath
         }
@@ -584,12 +607,18 @@ struct SettingsView: View {
         settings.save()
 
         // Reconcile pending notifications immediately so toggles take effect.
+        // Group secrets by their attached env so each env reconciles its own slice.
         let secrets = viewModel.secrets
-        let env = AppConfiguration.load()?.environment ?? AppConfiguration.defaultEnvironment
+        let configEnv = AppConfiguration.load()?.environment ?? AppConfiguration.defaultEnvironment
+        let envBuckets: [String: [SecretItem]] = Dictionary(grouping: secrets) {
+            $0.environment ?? configEnv
+        }
         if settings.enabled {
             Task {
                 await ExpiryNotificationScheduler.shared.requestAuthorizationIfNeeded()
-                ExpiryNotificationScheduler.shared.reconcile(secrets: secrets, environment: env)
+                for (env, items) in envBuckets {
+                    ExpiryNotificationScheduler.shared.reconcile(secrets: items, environment: env)
+                }
             }
         } else {
             ExpiryNotificationScheduler.shared.cancelAll()
@@ -599,13 +628,17 @@ struct SettingsView: View {
     // MARK: - Save
 
     private func save() {
-        guard let project = selectedProject,
-              let env = selectedEnvironment else { return }
+        guard let project = selectedProject else { return }
+        guard allEnvironmentsSelected || selectedEnvironment != nil else { return }
+
+        let envSlug: String = allEnvironmentsSelected
+            ? AppConfiguration.allEnvironmentsSentinel
+            : (selectedEnvironment?.slug ?? AppConfiguration.defaultEnvironment)
 
         let existingConfig = AppConfiguration.load()
         let config = AppConfiguration(
             projectId: project.id,
-            environment: env.slug,
+            environment: envSlug,
             secretPath: secretPath,
             baseURL: existingConfig?.baseURL ?? AppConfiguration.defaultBaseURL,
             projectName: project.name,
