@@ -117,6 +117,24 @@ enum Helpers {
     }
 }
 
+extension Helpers {
+    /// Build the active SecretStore for the loaded config. Used by commands that
+    /// must work for either backend (export/import, future read/write paths).
+    static func activeStore(_ config: AppConfiguration) -> SecretStore {
+        SecretStoreFactory.make(for: config)
+    }
+
+    /// Read a password from /dev/tty without echoing. Falls back to readLine() on
+    /// stdin if /dev/tty is unavailable (e.g. tests).
+    static func readPassword(prompt: String) -> String? {
+        FileHandle.standardError.write(Data(prompt.utf8))
+        if let buf = getpass("") {
+            return String(cString: buf)
+        }
+        return readLine(strippingNewline: true)
+    }
+}
+
 /// Lightweight validation error so subcommands can fail with non-zero exit + clean message.
 struct ValidationError: Error, CustomStringConvertible {
     let description: String

@@ -237,16 +237,22 @@ struct Remove: AsyncParsableCommand {
 
 struct Export: AsyncParsableCommand {
     static let configuration = CommandConfiguration(
-        abstract: "Dump all secrets in dotenv, json, or shell format."
+        abstract: "Dump all secrets in dotenv, json, shell, or encrypted .kubera backup format."
     )
 
     enum Format: String, ExpressibleByArgument {
-        case dotenv, json, shell
+        case dotenv, json, shell, kubera
     }
 
-    @Option(name: .long, help: "Output format: dotenv|json|shell.") var format: Format = .dotenv
+    @Option(name: .long, help: "Output format: dotenv|json|shell|kubera.") var format: Format = .dotenv
     @Option(name: .long, help: "Override environment slug.") var env: String?
     @Option(name: .long, help: "Override secret path.") var path: String?
+    @Option(name: [.short, .long],
+            help: "Output file. Required for --format=kubera. Defaults to stdout for other formats.")
+    var output: String?
+    @Option(name: .long,
+            help: "Password for encrypted backup (--format=kubera). Prompts on TTY if omitted. Avoid passing on the command line.")
+    var password: String?
 
     func run() async throws {
         let cfg = try Helpers.requireConfig()
@@ -266,7 +272,51 @@ struct Export: AsyncParsableCommand {
             for s in secrets {
                 print("export \(s.key)=\(quoteShell(s.value))")
             }
+        case .kubera:
+            try writeKuberaArchive(cfg: cfg, secrets: secrets)
         }
+    }
+
+    private func writeKuberaArchive(cfg: AppConfiguration, secrets: [SecretItem]) throws {
+        guard let outPath = output, !outPath.isEmpty else {
+            throw ValidationError("--format=kubera requires --output <file>.")
+        }
+        let pw: String
+        if let provided = password, !provided.isEmpty {
+            pw = provided
+        } else {
+            guard let entered = Helpers.readPassword(prompt: "Backup password: "),
+                  !entered.isEmpty else {
+                throw ValidationError("Password required for encrypted backup.")
+            }
+            guard let confirm = Helpers.readPassword(prompt: "Confirm password: "),
+                  confirm == entered else {
+                throw ValidationError("Passwords did not match.")
+            }
+            pw = entered
+        }
+
+        let backupSecrets: [BackupSecret] = secrets.map { s in
+            BackupSecret(
+                key: s.key, value: s.value, comment: s.comment,
+                tags: s.tags, secretMetadata: s.secretMetadata,
+                environment: s.environment ?? cfg.environment,
+                projectId: cfg.projectId,
+                secretPath: path ?? cfg.secretPath
+            )
+        }
+        let payload = BackupPayload(
+            backendId: cfg.storeBackend,
+            secrets: backupSecrets,
+            tags: nil
+        )
+        let blob = try BackupArchive.encode(payload, password: pw)
+        let url = URL(fileURLWithPath: (outPath as NSString).expandingTildeInPath)
+        try blob.write(to: url, options: .atomic)
+        try? FileManager.default.setAttributes(
+            [.posixPermissions: 0o600], ofItemAtPath: url.path
+        )
+        Helpers.warn("wrote \(backupSecrets.count) secrets to \(url.path)")
     }
 
     private func quoteDotenv(_ value: String) -> String {
