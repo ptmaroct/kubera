@@ -1,4 +1,5 @@
 import SwiftUI
+import KuberaCore
 
 struct SecretListView: View {
     @ObservedObject var appViewModel: AppViewModel

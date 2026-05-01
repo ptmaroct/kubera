@@ -1,4 +1,5 @@
 import SwiftUI
+import KuberaCore
 
 // MARK: - Colors
 
@@ -439,19 +440,19 @@ struct WindowBackground: View {
 
 // Conformances for picker support
 extension InfisicalOrg: CustomStringConvertible {
-    var description: String { name }
+    public var description: String { name }
 }
 
 extension InfisicalProject: CustomStringConvertible {
-    var description: String { name }
+    public var description: String { name }
 }
 
 extension InfisicalEnvironment: CustomStringConvertible {
-    var description: String { name }
+    public var description: String { name }
 }
 
 extension InfisicalTag: CustomStringConvertible {
-    var description: String { displayName }
+    public var description: String { displayName }
 }
 
 // MARK: - Color Hex Initializer

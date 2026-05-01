@@ -1,5 +1,7 @@
 #!/bin/bash
-# Creates an Kubera.app bundle from the swift build output
+# Creates a Kubera.app bundle from the swift build output.
+# Embeds the `kubera` CLI binary at Contents/Resources/kubera so install.sh
+# can symlink it into the user's $PATH.
 set -e
 
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
@@ -14,21 +16,28 @@ rm -rf "$APP_DIR"
 mkdir -p "$APP_DIR/Contents/MacOS"
 mkdir -p "$APP_DIR/Contents/Resources"
 
-# Copy binary
-cp "$BUILD_DIR/Kubera" "$APP_DIR/Contents/MacOS/Kubera"
+# GUI binary (CFBundleExecutable=KuberaApp).
+cp "$BUILD_DIR/KuberaApp" "$APP_DIR/Contents/MacOS/KuberaApp"
 
-# Copy Info.plist
-cp "$PROJECT_DIR/Kubera/Info.plist" "$APP_DIR/Contents/Info.plist"
-
-# Copy resource bundle if present
-if [ -d "$BUILD_DIR/Kubera_Kubera.bundle" ]; then
-    cp -R "$BUILD_DIR/Kubera_Kubera.bundle" "$APP_DIR/Contents/Resources/"
+# CLI binary lives inside the .app so the installer can symlink to it.
+if [ -f "$BUILD_DIR/kubera" ]; then
+    cp "$BUILD_DIR/kubera" "$APP_DIR/Contents/Resources/kubera"
+    chmod +x "$APP_DIR/Contents/Resources/kubera"
 fi
 
-# Copy app icon
+# Info.plist
+cp "$PROJECT_DIR/Kubera/Info.plist" "$APP_DIR/Contents/Info.plist"
+
+# Resource bundle if present (SwiftPM generated for asset access).
+if [ -d "$BUILD_DIR/Kubera_KuberaApp.bundle" ]; then
+    cp -R "$BUILD_DIR/Kubera_KuberaApp.bundle" "$APP_DIR/Contents/Resources/"
+fi
+
+# App icon
 if [ -f "$PROJECT_DIR/Kubera/Assets.xcassets/AppIcon.icns" ]; then
     cp "$PROJECT_DIR/Kubera/Assets.xcassets/AppIcon.icns" "$APP_DIR/Contents/Resources/AppIcon.icns"
 fi
 
 echo "App bundle created at: $APP_DIR"
 echo "Run with: open $APP_DIR"
+echo "CLI inside bundle:    $APP_DIR/Contents/Resources/kubera"

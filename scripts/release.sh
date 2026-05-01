@@ -23,10 +23,14 @@ echo "==> Bundling Kubera.app"
 APP_DIR="$ROOT/build/release/Kubera.app"
 rm -rf "$APP_DIR"
 mkdir -p "$APP_DIR/Contents/MacOS" "$APP_DIR/Contents/Resources"
-cp ".build/release/Kubera" "$APP_DIR/Contents/MacOS/Kubera"
+cp ".build/release/KuberaApp" "$APP_DIR/Contents/MacOS/KuberaApp"
+if [[ -f ".build/release/kubera" ]]; then
+  cp ".build/release/kubera" "$APP_DIR/Contents/Resources/kubera"
+  chmod +x "$APP_DIR/Contents/Resources/kubera"
+fi
 cp "Kubera/Info.plist" "$APP_DIR/Contents/Info.plist"
-if [[ -d ".build/release/Kubera_Kubera.bundle" ]]; then
-  cp -R ".build/release/Kubera_Kubera.bundle" "$APP_DIR/Contents/Resources/"
+if [[ -d ".build/release/Kubera_KuberaApp.bundle" ]]; then
+  cp -R ".build/release/Kubera_KuberaApp.bundle" "$APP_DIR/Contents/Resources/"
 fi
 if [[ -f "Kubera/Assets.xcassets/AppIcon.icns" ]]; then
   cp "Kubera/Assets.xcassets/AppIcon.icns" "$APP_DIR/Contents/Resources/AppIcon.icns"
@@ -75,6 +79,7 @@ cask "kubera" do
   depends_on macos: ">= :ventura"
 
   app "Kubera.app"
+  binary "#{appdir}/Kubera.app/Contents/Resources/kubera", target: "kubera"
 
   postflight do
     system_command "/usr/bin/xattr", args: ["-dr", "com.apple.quarantine", "#{appdir}/Kubera.app"]

@@ -1,34 +1,11 @@
 import Foundation
 import Carbon
 import AppKit
+import KuberaCore
 
-struct AppConfiguration: Codable {
-    var projectId: String
-    var environment: String
-    var secretPath: String
-    var baseURL: String
-    var projectName: String?
-    var organizationId: String?
-
-    // Keyboard shortcut (nil = use defaults: Cmd+Shift+K)
-    var shortcutKeyCode: UInt32?
-    var shortcutModifiers: UInt32?
-
-    static let defaultBaseURL = "https://app.infisical.com"
-    static let defaultEnvironment = "dev"
-    static let defaultSecretPath = "/"
-
-    /// Sentinel value stored in `environment` to indicate "fetch all envs in this project".
-    static let allEnvironmentsSentinel = "*"
-
-    /// True if this configuration is in all-envs mode.
-    var isAllEnvironments: Bool {
-        environment == Self.allEnvironmentsSentinel
-    }
+extension AppConfiguration {
     static let defaultShortcutKeyCode = UInt32(kVK_ANSI_K)
     static let defaultShortcutModifiers = UInt32(cmdKey | shiftKey)
-
-    private static let userDefaultsKey = "infisical_app_config"
 
     /// Get the configured or default shortcut key code
     var resolvedKeyCode: UInt32 {
@@ -43,31 +20,6 @@ struct AppConfiguration: Codable {
     /// Human-readable shortcut string (e.g., "⌘ ⇧ K")
     var shortcutDisplayString: String {
         ShortcutHelper.displayString(keyCode: resolvedKeyCode, modifiers: resolvedModifiers)
-    }
-
-    /// Direct link to the project secrets page on Infisical dashboard
-    var dashboardURL: String {
-        if let orgId = organizationId {
-            return "\(baseURL)/organizations/\(orgId)/projects/secret-management/\(projectId)/overview"
-        }
-        return baseURL
-    }
-
-    func save() {
-        if let data = try? JSONEncoder().encode(self) {
-            UserDefaults.standard.set(data, forKey: Self.userDefaultsKey)
-        }
-    }
-
-    static func load() -> AppConfiguration? {
-        guard let data = UserDefaults.standard.data(forKey: userDefaultsKey) else {
-            return nil
-        }
-        return try? JSONDecoder().decode(AppConfiguration.self, from: data)
-    }
-
-    static func clear() {
-        UserDefaults.standard.removeObject(forKey: userDefaultsKey)
     }
 }
 

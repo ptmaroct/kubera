@@ -1,4 +1,5 @@
 import SwiftUI
+import KuberaCore
 
 struct OnboardingView: View {
     @ObservedObject var viewModel: AppViewModel

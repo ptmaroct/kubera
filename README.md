@@ -107,34 +107,70 @@ open build/Kubera.app
 
 Clipboard auto-clears after 30 seconds for security.
 
+## CLI
+
+Kubera also ships a `kubera` command-line tool that reads the same project/env config you set in the menubar app (`~/.config/kubera/config.json`). Both `install.sh` and the Homebrew cask drop a symlink onto your `$PATH`, so after install:
+
+| Command | Action |
+|---------|--------|
+| `kubera status` | Login state + configured project/env/base URL |
+| `kubera login` / `kubera logout` | Sign in / out via the bundled `infisical` flow |
+| `kubera config show` | Print resolved config (`--json` for machine-readable) |
+| `kubera config set --project <id> --env dev --path / --base-url <url>` | Update fields (also writable from the GUI) |
+| `kubera config clear` | Wipe `~/.config/kubera/config.json` |
+| `kubera projects` | List projects you can access (`--json`) |
+| `kubera envs` | Envs in the configured project |
+| `kubera ls` | List secret keys (no values by default; `--values`, `--json`, `--tag <slug>`) |
+| `kubera get <KEY>` | Print one value to stdout |
+| `kubera copy <KEY>` | Copy to clipboard via `pbcopy` |
+| `kubera info <KEY>` | Full metadata: version, comment, tags, expiry, service URL |
+| `kubera set <KEY> <VALUE>` | Upsert (create or update). `<VALUE>` of `-` reads from stdin. `--comment`, `--tag <id>` |
+| `kubera rm <KEY> [--force]` | Delete, with confirm prompt unless forced |
+| `kubera export --format dotenv\|json\|shell` | Dump every secret in the chosen format |
+| `kubera run -- <cmd> [args…]` | Inject secrets as env vars and exec the subcommand (`kubera run -- npm run dev`) |
+| `kubera tags` / `kubera tags create <name>` | List or create tags |
+| `kubera open` / `kubera open --dashboard` | Launch the macOS app or the Infisical web dashboard |
+
+`kubera --help` covers the full surface. Most read commands accept `--json` for piping into `jq`. When the menu is in **All Environments** mode, set a default env in **Settings → Default for Add** so writes (`set`, `rm`) and the Add Secret form know which env to target — the CLI honors this fallback automatically.
+
+## Claude Code skill
+
+A [`SKILL.md`](./SKILL.md) at the repo root teaches Claude Code (and other agents that use the [vercel-labs/skills](https://github.com/vercel-labs/skills) loader) how to drive the `kubera` CLI safely — preflight checks, when to use `copy`/`run` vs `get`, recipes for `.env` bootstrap and key rotation.
+
+Install it into your project (or globally) with the `skills` npm package:
+
+```bash
+# project-scoped — commits .claude/skills/kubera/ into the repo
+npx skills add ptmaroct/kubera --agent claude-code
+
+# global, for all projects on this machine
+npx skills add ptmaroct/kubera --agent claude-code --scope user
+```
+
+The skill assumes the `kubera` binary is on `$PATH`. If it isn't yet, run the curl installer or `brew install --cask kubera` first.
+
 ## Project Structure
 
+Three SwiftPM targets share a single core library:
+
 ```
-Kubera/
-├── KuberaApp.swift          # App entry point
-├── AppDelegate.swift               # NSStatusBar, NSMenu, window management
+KuberaCore/                   # Library: shared types + Infisical service
 ├── Models/
-│   ├── Secret.swift                # Secret model with version, tags, timestamps
-│   ├── AppConfiguration.swift      # Persisted project/env/org config
-│   └── APIModels.swift             # Org/project/env/tag models from API
-├── Services/
-│   ├── InfisicalCLIService.swift   # CLI + REST API (list, create, update, delete)
-│   ├── ProjectCache.swift          # In-memory cache for projects/tags
-│   └── ClipboardService.swift      # Copy with auto-clear
-├── ViewModels/
-│   ├── AppViewModel.swift          # Central state management
-│   ├── SecretListViewModel.swift   # View All window state
-│   ├── AddSecretViewModel.swift    # Add secret form state
-│   └── OnboardingViewModel.swift   # Setup flow state
-├── Views/
-│   ├── DesignSystem.swift          # Colors, components, animations
-│   ├── SecretListView.swift        # View All secrets window
-│   ├── OnboardingView.swift        # First-launch setup wizard
-│   ├── SettingsView.swift          # Project/env configuration
-│   └── AddSecretView.swift         # Create new secret form
-└── Utilities/
-    ├── KeyboardShortcutNames.swift # Global hotkey (Carbon API)
-    └── Constants.swift
+│   ├── Secret.swift              # SecretItem, SecretTag, SecretMetadata*
+│   ├── AppConfiguration.swift    # File-backed config (~/.config/kubera/config.json)
+│   └── APIModels.swift
+└── Services/
+    └── InfisicalCLIService.swift # REST API + CLI session helpers
+
+Kubera/                       # GUI executable (KuberaApp target)
+├── KuberaApp.swift, AppDelegate.swift
+├── Models/{AppConfiguration+Shortcut, DockVisibilityPreference, ExpiryNotificationSettings}
+├── Services/{TouchIDService, ClipboardService, ProjectCache, ExpiryNotificationScheduler}
+├── ViewModels/, Views/, Utilities/
+
+KuberaCLI/                    # CLI executable (kubera binary)
+├── KuberaCLI.swift, Helpers.swift
+└── Commands/{Status, Login, Config, Projects, Secrets}.swift
 ```
 
 ## Troubleshooting

@@ -1,4 +1,5 @@
 import SwiftUI
+import KuberaCore
 import Carbon
 
 struct SettingsView: View {
@@ -9,6 +10,34 @@ struct SettingsView: View {
     @State private var selectedProject: InfisicalProject?
     @State private var selectedEnvironment: InfisicalEnvironment?
     @State private var allEnvironmentsSelected: Bool = false
+    @State private var allProjectsSelected: Bool = false
+    @State private var defaultAddEnvSlug: String?
+
+    /// Save button enabled when either: all-projects mode is on (env is locked
+    /// to all-envs), or a single project + an env / all-envs is selected.
+    private var isSaveable: Bool {
+        if allProjectsSelected { return true }
+        guard selectedProject != nil else { return false }
+        return allEnvironmentsSelected || selectedEnvironment != nil
+    }
+
+    /// Envs available to the "Default for Add" picker. In all-projects mode
+    /// we union envs across every project (de-dup by slug); otherwise we use
+    /// the selected project's envs.
+    private var defaultAddEnvOptions: [InfisicalEnvironment] {
+        if allProjectsSelected {
+            var seen: Set<String> = []
+            var out: [InfisicalEnvironment] = []
+            for project in projects {
+                for env in project.environments where !seen.contains(env.slug) {
+                    seen.insert(env.slug)
+                    out.append(env)
+                }
+            }
+            return out.sorted { $0.name < $1.name }
+        }
+        return selectedProject?.environments ?? []
+    }
     @State private var secretPath: String = "/"
     @State private var isLoading = true
     @State private var statusMessage: String?
@@ -41,21 +70,19 @@ struct SettingsView: View {
                 .ignoresSafeArea()
 
             VStack(spacing: 0) {
-                // Header
-                HStack {
+                // Header — relies on the standard window close button for dismiss.
+                // Version + GitHub + handle chips live here so the right column
+                // doesn't need an About card eating vertical space.
+                HStack(spacing: 10) {
                     Text("Settings")
                         .font(.system(size: 16, weight: .bold))
                         .foregroundColor(.white.opacity(0.92))
                     Spacer()
-                    Button {
-                        stopRecording()
-                        onDismiss()
-                    } label: {
-                        Image(systemName: "xmark.circle.fill")
-                            .font(.system(size: 18))
-                            .foregroundColor(.white.opacity(0.3))
-                    }
-                    .buttonStyle(.plain)
+                    Text("v1.4.0")
+                        .font(.system(size: 11, weight: .medium))
+                        .foregroundColor(.white.opacity(0.4))
+                    headerLink(text: "Star on GitHub", icon: "star.fill", url: "https://github.com/ptmaroct/kubera")
+                    headerLink(text: "@waahbete", icon: nil, url: "https://x.com/waahbete")
                 }
                 .padding(.horizontal, 24)
                 .padding(.top, 20)
@@ -71,8 +98,8 @@ struct SettingsView: View {
                         .padding(.top, 8)
                     Spacer()
                 } else {
-                    ScrollView(.vertical, showsIndicators: false) {
-                        VStack(spacing: 16) {
+                    HStack(alignment: .top, spacing: 14) {
+                        VStack(spacing: 14) {
                             // Project & Environment card
                             glassCard {
                                 VStack(spacing: 14) {
@@ -81,42 +108,58 @@ struct SettingsView: View {
                                         label: "Project"
                                     ) {
                                         Menu {
+                                            Button {
+                                                allProjectsSelected = true
+                                                selectedProject = nil
+                                                selectedEnvironment = nil
+                                                allEnvironmentsSelected = true
+                                                // Pre-populate defaultAddEnvSlug from the union if not already valid.
+                                                if defaultAddEnvSlug == nil
+                                                    || !defaultAddEnvOptions.contains(where: { $0.slug == defaultAddEnvSlug }) {
+                                                    defaultAddEnvSlug = defaultAddEnvOptions.first?.slug
+                                                }
+                                            } label: {
+                                                HStack {
+                                                    Text("All Projects")
+                                                    if allProjectsSelected {
+                                                        Image(systemName: "checkmark")
+                                                    }
+                                                }
+                                            }
+                                            Divider()
                                             ForEach(projects) { project in
                                                 Button {
+                                                    allProjectsSelected = false
                                                     selectedProject = project
                                                     selectedEnvironment = project.environments.first
                                                     allEnvironmentsSelected = false
                                                 } label: {
                                                     HStack {
                                                         Text(project.name)
-                                                        if selectedProject?.id == project.id {
+                                                        if !allProjectsSelected && selectedProject?.id == project.id {
                                                             Image(systemName: "checkmark")
                                                         }
                                                     }
                                                 }
                                             }
                                         } label: {
-                                            HStack(spacing: 4) {
-                                                Text(selectedProject?.name ?? "Select...")
-                                                    .font(.system(size: 13))
-                                                    .foregroundColor(.white.opacity(0.85))
-                                                Image(systemName: "chevron.up.chevron.down")
-                                                    .font(.system(size: 8))
-                                                    .foregroundColor(.white.opacity(0.4))
-                                            }
+                                            dropdownPill(text: allProjectsSelected
+                                                         ? "All Projects"
+                                                         : (selectedProject?.name ?? "Select..."))
                                         }
-                                        .menuStyle(.borderlessButton)
+                                        .buttonStyle(.plain)
                                         .menuIndicator(.hidden)
                                         .fixedSize()
                                     }
 
-                                    Divider().opacity(0.2)
+                                    if !allProjectsSelected {
+                                        Divider().opacity(0.2)
 
-                                    settingsRow(
-                                        icon: "leaf.fill",
-                                        label: "Environment"
-                                    ) {
-                                        if let envs = selectedProject?.environments, !envs.isEmpty {
+                                        settingsRow(
+                                            icon: "leaf.fill",
+                                            label: "Environment"
+                                        ) {
+                                            if let envs = selectedProject?.environments, !envs.isEmpty {
                                             Menu {
                                                 Button {
                                                     allEnvironmentsSelected = true
@@ -144,18 +187,44 @@ struct SettingsView: View {
                                                     }
                                                 }
                                             } label: {
-                                                HStack(spacing: 4) {
-                                                    Text(allEnvironmentsSelected
-                                                         ? "All Environments"
-                                                         : (selectedEnvironment?.name ?? "Select..."))
-                                                        .font(.system(size: 13))
-                                                        .foregroundColor(.white.opacity(0.85))
-                                                    Image(systemName: "chevron.up.chevron.down")
-                                                        .font(.system(size: 8))
-                                                        .foregroundColor(.white.opacity(0.4))
-                                                }
+                                                dropdownPill(text: allEnvironmentsSelected
+                                                             ? "All Environments"
+                                                             : (selectedEnvironment?.name ?? "Select..."))
                                             }
-                                            .menuStyle(.borderlessButton)
+                                            .buttonStyle(.plain)
+                                            .menuIndicator(.hidden)
+                                            .fixedSize()
+                                        }
+                                        }
+                                    }
+
+                                    Divider().opacity(0.2)
+
+                                    settingsRow(
+                                        icon: "plus.square.on.square",
+                                        label: "Default for Add"
+                                    ) {
+                                        if defaultAddEnvOptions.isEmpty {
+                                            dropdownPill(text: "—").opacity(0.4)
+                                        } else {
+                                            Menu {
+                                                ForEach(defaultAddEnvOptions) { env in
+                                                    Button {
+                                                        defaultAddEnvSlug = env.slug
+                                                    } label: {
+                                                        HStack {
+                                                            Text(env.name)
+                                                            if defaultAddEnvSlug == env.slug {
+                                                                Image(systemName: "checkmark")
+                                                            }
+                                                        }
+                                                    }
+                                                }
+                                            } label: {
+                                                dropdownPill(text: defaultAddEnvOptions.first(where: { $0.slug == defaultAddEnvSlug })?.name
+                                                             ?? defaultAddEnvOptions.first?.name ?? "Select...")
+                                            }
+                                            .buttonStyle(.plain)
                                             .menuIndicator(.hidden)
                                             .fixedSize()
                                         }
@@ -265,16 +334,9 @@ struct SettingsView: View {
                                                         }
                                                     }
                                                 } label: {
-                                                    HStack(spacing: 4) {
-                                                        Text(touchIDTimeout.displayName)
-                                                            .font(.system(size: 13))
-                                                            .foregroundColor(.white.opacity(0.85))
-                                                        Image(systemName: "chevron.up.chevron.down")
-                                                            .font(.system(size: 8))
-                                                            .foregroundColor(.white.opacity(0.4))
-                                                    }
+                                                    dropdownPill(text: touchIDTimeout.displayName)
                                                 }
-                                                .menuStyle(.borderlessButton)
+                                                .buttonStyle(.plain)
                                                 .menuIndicator(.hidden)
                                                 .fixedSize()
                                             }
@@ -294,7 +356,10 @@ struct SettingsView: View {
                                     }
                                 }
                             }
+                            Spacer(minLength: 0)
+                        }
 
+                        VStack(spacing: 14) {
                             // Expiry reminders card
                             glassCard {
                                 VStack(spacing: 12) {
@@ -379,72 +444,10 @@ struct SettingsView: View {
                                 }
                             }
 
-                            // About card
-                            glassCard {
-                                VStack(spacing: 12) {
-                                    settingsRow(
-                                        icon: "info.circle.fill",
-                                        label: "Version"
-                                    ) {
-                                        Text("1.4.0")
-                                            .font(.system(size: 12))
-                                            .foregroundColor(.white.opacity(0.4))
-                                    }
-
-                                    Divider().opacity(0.2)
-
-                                    settingsRow(
-                                        icon: "star.fill",
-                                        label: "Enjoying Kubera?"
-                                    ) {
-                                        Button {
-                                            if let url = URL(string: "https://github.com/ptmaroct/kubera") {
-                                                NSWorkspace.shared.open(url)
-                                            }
-                                        } label: {
-                                            HStack(spacing: 4) {
-                                                Text("Star on GitHub")
-                                                    .font(.system(size: 12, weight: .medium))
-                                                    .foregroundColor(Color.vault.accent)
-                                                Image(systemName: "arrow.up.right")
-                                                    .font(.system(size: 8, weight: .semibold))
-                                                    .foregroundColor(Color.vault.accent.opacity(0.6))
-                                            }
-                                        }
-                                        .buttonStyle(.plain)
-                                    }
-
-                                    Divider().opacity(0.2)
-
-                                    HStack(spacing: 4) {
-                                        Text("Made by Anuj Sharma")
-                                            .font(.system(size: 11))
-                                            .foregroundColor(.white.opacity(0.5))
-                                        Text("·")
-                                            .font(.system(size: 11))
-                                            .foregroundColor(.white.opacity(0.3))
-                                        Button {
-                                            if let url = URL(string: "https://x.com/waahbete") {
-                                                NSWorkspace.shared.open(url)
-                                            }
-                                        } label: {
-                                            HStack(spacing: 3) {
-                                                Text("@waahbete")
-                                                    .font(.system(size: 11, weight: .medium))
-                                                    .foregroundColor(Color.vault.accent)
-                                                Image(systemName: "arrow.up.right")
-                                                    .font(.system(size: 8, weight: .semibold))
-                                                    .foregroundColor(Color.vault.accent.opacity(0.6))
-                                            }
-                                        }
-                                        .buttonStyle(.plain)
-                                    }
-                                    .frame(maxWidth: .infinity, alignment: .center)
-                                }
-                            }
+                            Spacer(minLength: 0)
                         }
-                        .padding(.horizontal, 24)
                     }
+                    .padding(.horizontal, 20)
 
                     Spacer(minLength: 8)
                 }
@@ -470,13 +473,13 @@ struct SettingsView: View {
                         .cornerRadius(10)
                 }
                 .buttonStyle(.plain)
-                .disabled(selectedProject == nil || (!allEnvironmentsSelected && selectedEnvironment == nil))
-                .opacity(selectedProject == nil || (!allEnvironmentsSelected && selectedEnvironment == nil) ? 0.4 : 1)
+                .disabled(!isSaveable)
+                .opacity(isSaveable ? 1 : 0.4)
                 .padding(.horizontal, 24)
                 .padding(.bottom, 20)
             }
         }
-        .frame(width: 520, height: 760)
+        .frame(width: 820, height: 430)
         .preferredColorScheme(.dark)
         .onAppear {
             loadData()
@@ -512,6 +515,67 @@ struct SettingsView: View {
     }
 
     // MARK: - Settings Row
+
+    /// Compact link chip used in the Settings header. Replaces the old "About"
+    /// card (Version / Enjoying Kubera? / @waahbete) so the right column can
+    /// breathe without padding.
+    @ViewBuilder
+    private func headerLink(text: String, icon: String?, url: String) -> some View {
+        Button {
+            if let target = URL(string: url) {
+                NSWorkspace.shared.open(target)
+            }
+        } label: {
+            HStack(spacing: 4) {
+                if let icon {
+                    Image(systemName: icon)
+                        .font(.system(size: 9, weight: .semibold))
+                }
+                Text(text)
+                    .font(.system(size: 11, weight: .medium))
+                Image(systemName: "arrow.up.right")
+                    .font(.system(size: 8, weight: .semibold))
+                    .opacity(0.6)
+            }
+            .foregroundColor(Color.vault.accent)
+            .padding(.horizontal, 8)
+            .padding(.vertical, 4)
+            .background(
+                RoundedRectangle(cornerRadius: 6)
+                    .fill(Color.vault.accent.opacity(0.10))
+                    .overlay(
+                        RoundedRectangle(cornerRadius: 6)
+                            .stroke(Color.vault.accent.opacity(0.18), lineWidth: 1)
+                    )
+            )
+        }
+        .buttonStyle(.plain)
+    }
+
+    /// Pill-shaped trigger label for Menus, used by every dropdown in this view
+    /// so the project / env / default-add / Touch-ID timeout selectors all read
+    /// as one consistent control.
+    @ViewBuilder
+    private func dropdownPill(text: String) -> some View {
+        HStack(spacing: 6) {
+            Text(text)
+                .font(.system(size: 13, weight: .medium))
+                .foregroundColor(.white.opacity(0.95))
+            Image(systemName: "chevron.up.chevron.down")
+                .font(.system(size: 9, weight: .semibold))
+                .foregroundColor(Color.vault.accent.opacity(0.85))
+        }
+        .padding(.horizontal, 10)
+        .padding(.vertical, 5)
+        .background(
+            RoundedRectangle(cornerRadius: 6)
+                .fill(Color.white.opacity(0.07))
+                .overlay(
+                    RoundedRectangle(cornerRadius: 6)
+                        .stroke(Color.white.opacity(0.10), lineWidth: 1)
+                )
+        )
+    }
 
     @ViewBuilder
     private func settingsRow<Content: View>(icon: String, label: String, @ViewBuilder trailing: () -> Content) -> some View {
@@ -596,7 +660,15 @@ struct SettingsView: View {
 
     private func applyConfig() {
         if let config = AppConfiguration.load() {
-            selectedProject = projects.first(where: { $0.id == config.projectId })
+            if config.isAllProjects {
+                allProjectsSelected = true
+                selectedProject = nil
+                selectedEnvironment = nil
+                allEnvironmentsSelected = true
+            } else {
+                allProjectsSelected = false
+                selectedProject = projects.first(where: { $0.id == config.projectId })
+            }
             if let project = selectedProject {
                 if config.isAllEnvironments {
                     allEnvironmentsSelected = true
@@ -607,6 +679,7 @@ struct SettingsView: View {
                 }
             }
             secretPath = config.secretPath
+            defaultAddEnvSlug = config.defaultAddEnvironment ?? selectedProject?.environments.first?.slug
         }
     }
 
@@ -660,8 +733,17 @@ struct SettingsView: View {
     // MARK: - Save
 
     private func save() {
-        guard let project = selectedProject else { return }
-        guard allEnvironmentsSelected || selectedEnvironment != nil else { return }
+        let projectId: String
+        let projectName: String?
+        if allProjectsSelected {
+            projectId = AppConfiguration.allProjectsSentinel
+            projectName = "All Projects"
+        } else {
+            guard let project = selectedProject else { return }
+            guard allEnvironmentsSelected || selectedEnvironment != nil else { return }
+            projectId = project.id
+            projectName = project.name
+        }
 
         let envSlug: String = allEnvironmentsSelected
             ? AppConfiguration.allEnvironmentsSentinel
@@ -669,14 +751,15 @@ struct SettingsView: View {
 
         let existingConfig = AppConfiguration.load()
         let config = AppConfiguration(
-            projectId: project.id,
+            projectId: projectId,
             environment: envSlug,
             secretPath: secretPath,
             baseURL: existingConfig?.baseURL ?? AppConfiguration.defaultBaseURL,
-            projectName: project.name,
+            projectName: projectName,
             organizationId: existingConfig?.organizationId,
             shortcutKeyCode: shortcutKeyCode,
-            shortcutModifiers: shortcutModifiers
+            shortcutModifiers: shortcutModifiers,
+            defaultAddEnvironment: defaultAddEnvSlug
         )
         config.save()
 
