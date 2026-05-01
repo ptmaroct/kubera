@@ -48,7 +48,8 @@ enum Helpers {
     }
 
     /// Fetch secrets honoring the all-environments sentinel (`*`).
-    /// Returns secrets with `environment` populated so callers can disambiguate.
+    /// Routes through the active `SecretStore` so both Infisical and the local
+    /// backend work transparently. Returns secrets with `environment` populated.
     static func fetchSecrets(
         config: AppConfiguration,
         envOverride: String? = nil,
@@ -56,28 +57,19 @@ enum Helpers {
     ) async throws -> [SecretItem] {
         let effectiveEnv = envOverride ?? config.environment
         let effectivePath = pathOverride ?? config.secretPath
+        let store = activeStore(config)
 
-        // Fast path: a concrete env slug.
         if effectiveEnv != AppConfiguration.allEnvironmentsSentinel {
-            let items = try await InfisicalCLIService.listSecretsViaAPI(
+            let items = try await store.listSecrets(
                 environment: effectiveEnv,
                 projectId: config.projectId,
-                secretPath: effectivePath,
-                baseURL: config.baseURL
+                secretPath: effectivePath
             )
             return items.map { var c = $0; c.environment = effectiveEnv; return c }
         }
 
-        // All-envs fan-out: resolve project env slugs, then list per env.
-        let orgId: String
-        if let configured = config.organizationId {
-            orgId = configured
-        } else {
-            let orgs = try await InfisicalCLIService.fetchOrganizations(baseURL: config.baseURL)
-            guard let first = orgs.first else { throw ValidationError("No organizations available.") }
-            orgId = first.id
-        }
-        let projects = try await InfisicalCLIService.fetchProjects(orgId: orgId, baseURL: config.baseURL)
+        // All-envs fan-out: resolve env slugs from the backend's project list.
+        let projects = try await store.listProjects()
         guard let project = projects.first(where: { $0.id == config.projectId }) else {
             throw ValidationError("Configured project \(config.projectId) not found.")
         }
@@ -86,11 +78,10 @@ enum Helpers {
         return try await withThrowingTaskGroup(of: (Int, [SecretItem]).self) { group in
             for (idx, slug) in envSlugs.enumerated() {
                 group.addTask {
-                    let items = try await InfisicalCLIService.listSecretsViaAPI(
+                    let items = try await store.listSecrets(
                         environment: slug,
                         projectId: config.projectId,
-                        secretPath: effectivePath,
-                        baseURL: config.baseURL
+                        secretPath: effectivePath
                     )
                     let tagged = items.map { var c = $0; c.environment = slug; return c }
                     return (idx, tagged)
@@ -114,6 +105,24 @@ enum Helpers {
             return path
         }
         return nil
+    }
+}
+
+extension Helpers {
+    /// Build the active SecretStore for the loaded config. Used by commands that
+    /// must work for either backend (export/import, future read/write paths).
+    static func activeStore(_ config: AppConfiguration) -> SecretStore {
+        SecretStoreFactory.make(for: config)
+    }
+
+    /// Read a password from /dev/tty without echoing. Falls back to readLine() on
+    /// stdin if /dev/tty is unavailable (e.g. tests).
+    static func readPassword(prompt: String) -> String? {
+        FileHandle.standardError.write(Data(prompt.utf8))
+        if let buf = getpass("") {
+            return String(cString: buf)
+        }
+        return readLine(strippingNewline: true)
     }
 }
 

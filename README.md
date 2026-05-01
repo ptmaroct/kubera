@@ -127,6 +127,8 @@ Kubera also ships a `kubera` command-line tool that reads the same project/env c
 | `kubera set <KEY> <VALUE>` | Upsert (create or update). `<VALUE>` of `-` reads from stdin. `--comment`, `--tag <id>` |
 | `kubera rm <KEY> [--force]` | Delete, with confirm prompt unless forced |
 | `kubera export --format dotenv\|json\|shell` | Dump every secret in the chosen format |
+| `kubera export --format kubera --output <file>` | Encrypted backup archive (AES-256-GCM, PBKDF2-SHA256). Prompts for a password |
+| `kubera import <file.kubera> [--overwrite] [--dry-run]` | Restore from an encrypted backup into the active backend |
 | `kubera run -- <cmd> [args…]` | Inject secrets as env vars and exec the subcommand (`kubera run -- npm run dev`) |
 | `kubera tags` / `kubera tags create <name>` | List or create tags |
 | `kubera open` / `kubera open --dashboard` | Launch the macOS app or the Infisical web dashboard |
@@ -192,6 +194,19 @@ The curl and Homebrew installers do this automatically; you only need it for man
 ```bash
 infisical login --domain https://eu.infisical.com   # or your self-hosted URL
 ```
+
+## Encrypted backup & restore
+
+`kubera export --format=kubera` writes a single-file backup archive: AES-256-GCM ciphertext over a JSON dump of the visible secrets, with a 256-bit key derived from your password via PBKDF2-SHA256 (524,288 rounds). The archive carries each secret's environment, project, and path so a restore lands in the right namespace.
+
+```bash
+kubera export --format=kubera --output ~/Desktop/kubera-backup.kubera   # prompts for password twice
+kubera import ~/Desktop/kubera-backup.kubera                            # prompts once
+```
+
+Pair `--dry-run` with import to preview, and `--overwrite` to update existing secrets that share `(project, env, path, key)`. The archive format is documented in `KuberaCore/Services/LocalCrypto.swift` (`BackupArchive`).
+
+> Phase 2 (v1.5.1-beta.2) wires the GUI through the `SecretStore` protocol so picking **On this Mac** in onboarding gives you a fully local, encrypted vault — no Infisical account required. Settings → Storage exposes Backup… / Restore… buttons that drive the same encrypted archive flow.
 
 ## Why is the macOS sandbox disabled?
 
