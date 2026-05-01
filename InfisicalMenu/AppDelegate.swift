@@ -101,6 +101,17 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
 
         menu.addItem(NSMenuItem.separator())
 
+        // Lock Now (only when Touch ID is enabled)
+        if TouchIDSettings.load().isEnabled && TouchIDService.shared.isAvailable {
+            let lockItem = NSMenuItem(title: "Lock Now", action: #selector(lockNow), keyEquivalent: "l")
+            lockItem.target = self
+            if let lockImage = NSImage(systemSymbolName: "lock.fill", accessibilityDescription: "Lock") {
+                lockImage.isTemplate = true
+                lockItem.image = lockImage
+            }
+            menu.addItem(lockItem)
+        }
+
         // Settings
         let settingsItem = NSMenuItem(title: "Settings...", action: #selector(openSettings), keyEquivalent: ",")
         settingsItem.target = self
@@ -260,6 +271,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
                 button.image = original
             }
         }
+    }
+
+    @objc private func lockNow() {
+        isUnlocked = false
+        TouchIDService.shared.clearAuth()
     }
 
     @objc private func unlockWithTouchID() {
