@@ -207,7 +207,8 @@ final class AddSecretViewModel: ObservableObject {
         isCreating = true
         errorMessage = nil
 
-        let baseURL = AppConfiguration.load()?.baseURL ?? AppConfiguration.defaultBaseURL
+        let config = AppConfiguration.load() ?? AppConfiguration(projectId: project.id)
+        let store = SecretStoreFactory.make(for: config)
 
         // 1. Create any pending tags in PARALLEL
         var allTagIds = selectedTagIds
@@ -218,10 +219,10 @@ final class AddSecretViewModel: ObservableObject {
             await withTaskGroup(of: InfisicalTag?.self) { group in
                 for tagName in tagNames {
                     group.addTask {
-                        try? await InfisicalCLIService.createTag(
+                        try? await store.createTag(
                             name: tagName,
-                            projectId: projectId,
-                            baseURL: baseURL
+                            color: "#F5A524",
+                            projectId: projectId
                         )
                     }
                 }
@@ -250,7 +251,7 @@ final class AddSecretViewModel: ObservableObject {
             try await withThrowingTaskGroup(of: Void.self) { group in
                 for env in envsToCreate {
                     group.addTask {
-                        try await InfisicalCLIService.createSecretViaAPI(
+                        try await store.createSecret(
                             name: secretKey,
                             value: secretValue,
                             comment: secretComment,
@@ -259,8 +260,7 @@ final class AddSecretViewModel: ObservableObject {
                             serviceURL: serviceURLArg,
                             environment: env.slug,
                             projectId: projectId,
-                            secretPath: "/",
-                            baseURL: baseURL
+                            secretPath: "/"
                         )
                     }
                 }

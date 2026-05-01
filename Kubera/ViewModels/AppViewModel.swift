@@ -106,14 +106,15 @@ final class AppViewModel: ObservableObject {
             fetchTargets.append((config.projectId, [config.environment]))
         }
 
+        let store = SecretStoreFactory.make(for: config)
         do {
             var merged: [SecretItem] = []
             for target in fetchTargets {
                 let items = try await fetchSecrets(
+                    store: store,
                     envSlugs: target.envSlugs,
                     projectId: target.projectId,
-                    secretPath: config.secretPath,
-                    baseURL: config.baseURL
+                    secretPath: config.secretPath
                 )
                 merged.append(contentsOf: items)
             }
@@ -139,21 +140,21 @@ final class AppViewModel: ObservableObject {
         isLoading = false
     }
 
-    /// Fetch secrets across one or more env slugs. Each result has `environment` set.
+    /// Fetch secrets across one or more env slugs through the active backend.
+    /// Each returned `SecretItem.environment` is stamped client-side.
     private func fetchSecrets(
+        store: SecretStore,
         envSlugs: [String],
         projectId: String,
-        secretPath: String,
-        baseURL: String
+        secretPath: String
     ) async throws -> [SecretItem] {
         try await withThrowingTaskGroup(of: (String, [SecretItem]).self) { group in
             for env in envSlugs {
                 group.addTask {
-                    let items = try await InfisicalCLIService.listSecretsViaAPI(
+                    let items = try await store.listSecrets(
                         environment: env,
                         projectId: projectId,
-                        secretPath: secretPath,
-                        baseURL: baseURL
+                        secretPath: secretPath
                     )
                     let tagged = items.map { item -> SecretItem in
                         var copy = item
@@ -168,7 +169,6 @@ final class AppViewModel: ObservableObject {
             for try await result in group {
                 collected.append(result)
             }
-            // Preserve env ordering from envSlugs for stable display.
             let order = Dictionary(uniqueKeysWithValues: envSlugs.enumerated().map { ($1, $0) })
             collected.sort { (order[$0.0] ?? 0) < (order[$1.0] ?? 0) }
             return collected.flatMap { $0.1 }
@@ -192,11 +192,11 @@ final class AppViewModel: ObservableObject {
 
     func createSecret(key: String, value: String) async -> Bool {
         guard let config = AppConfiguration.load() else { return false }
-
+        let store = SecretStoreFactory.make(for: config)
         do {
-            try await InfisicalCLIService.createSecret(
-                key: key,
-                value: value,
+            try await store.createSecret(
+                name: key, value: value, comment: "", tagIds: [],
+                expiryDate: nil, serviceURL: nil,
                 environment: config.environment,
                 projectId: config.projectId,
                 secretPath: config.secretPath
@@ -223,18 +223,19 @@ final class AppViewModel: ObservableObject {
         let env = secret.environment ?? config.environment
         guard env != AppConfiguration.allEnvironmentsSentinel else { return false }
 
+        let store = SecretStoreFactory.make(for: config)
         do {
-            try await InfisicalCLIService.updateSecret(
+            try await store.updateSecret(
                 name: secret.key,
                 value: newValue,
                 comment: newComment,
+                tagIds: secret.tags?.map(\.id) ?? [],
                 expiryDate: newExpiry,
                 serviceURL: newServiceURL,
                 metadataExplicit: true,
                 environment: env,
                 projectId: config.projectId,
-                secretPath: config.secretPath,
-                baseURL: config.baseURL
+                secretPath: config.secretPath
             )
             await loadSecrets()
             return true
@@ -249,14 +250,13 @@ final class AppViewModel: ObservableObject {
         guard let config = AppConfiguration.load() else { return false }
         let env = secret.environment ?? config.environment
         guard env != AppConfiguration.allEnvironmentsSentinel else { return false }
-
+        let store = SecretStoreFactory.make(for: config)
         do {
-            try await InfisicalCLIService.deleteSecret(
+            try await store.deleteSecret(
                 name: secret.key,
                 environment: env,
                 projectId: config.projectId,
-                secretPath: config.secretPath,
-                baseURL: config.baseURL
+                secretPath: config.secretPath
             )
             // In all-envs mode keep entries from other envs intact.
             secrets.removeAll { $0.key == secret.key && ($0.environment ?? env) == env }
