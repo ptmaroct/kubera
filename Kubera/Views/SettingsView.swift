@@ -366,8 +366,8 @@ struct SettingsView: View {
                                     Divider().opacity(0.2)
 
                                     settingsRow(
-                                        icon: "link",
-                                        label: "Source"
+                                        icon: "star.fill",
+                                        label: "Enjoying Kubera?"
                                     ) {
                                         Button {
                                             if let url = URL(string: "https://github.com/ptmaroct/kubera") {
@@ -375,8 +375,8 @@ struct SettingsView: View {
                                             }
                                         } label: {
                                             HStack(spacing: 4) {
-                                                Text("GitHub")
-                                                    .font(.system(size: 12))
+                                                Text("Star on GitHub")
+                                                    .font(.system(size: 12, weight: .medium))
                                                     .foregroundColor(Color.vault.accent)
                                                 Image(systemName: "arrow.up.right")
                                                     .font(.system(size: 8, weight: .semibold))
