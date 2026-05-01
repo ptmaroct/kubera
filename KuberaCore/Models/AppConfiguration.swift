@@ -15,6 +15,17 @@ public struct AppConfiguration: Codable, Equatable {
     /// "All Environments". nil means "use the first env in the project".
     public var defaultAddEnvironment: String?
 
+    /// Backend providing secrets — "local" (encrypted on this Mac, default) or
+    /// "infisical". Decoded from older configs as "infisical" via custom init below
+    /// so existing users see no change after upgrade.
+    public var storeBackend: String
+
+    /// When true and storeBackend == "local", secret values are written to the
+    /// macOS Keychain with `kSecAttrSynchronizable = true` so iCloud Keychain
+    /// replicates them across the user's signed-in devices. No effect on
+    /// Infisical backend.
+    public var iCloudSyncEnabled: Bool
+
     public static let defaultBaseURL = "https://app.infisical.com"
     public static let defaultEnvironment = "dev"
     public static let defaultSecretPath = "/"
@@ -44,7 +55,9 @@ public struct AppConfiguration: Codable, Equatable {
         organizationId: String? = nil,
         shortcutKeyCode: UInt32? = nil,
         shortcutModifiers: UInt32? = nil,
-        defaultAddEnvironment: String? = nil
+        defaultAddEnvironment: String? = nil,
+        storeBackend: String = "infisical",
+        iCloudSyncEnabled: Bool = false
     ) {
         self.projectId = projectId
         self.environment = environment
@@ -55,6 +68,32 @@ public struct AppConfiguration: Codable, Equatable {
         self.shortcutKeyCode = shortcutKeyCode
         self.shortcutModifiers = shortcutModifiers
         self.defaultAddEnvironment = defaultAddEnvironment
+        self.storeBackend = storeBackend
+        self.iCloudSyncEnabled = iCloudSyncEnabled
+    }
+
+    enum CodingKeys: String, CodingKey {
+        case projectId, environment, secretPath, baseURL, projectName, organizationId
+        case shortcutKeyCode, shortcutModifiers, defaultAddEnvironment
+        case storeBackend, iCloudSyncEnabled
+    }
+
+    public init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        projectId = try c.decode(String.self, forKey: .projectId)
+        environment = try c.decodeIfPresent(String.self, forKey: .environment)
+            ?? Self.defaultEnvironment
+        secretPath = try c.decodeIfPresent(String.self, forKey: .secretPath)
+            ?? Self.defaultSecretPath
+        baseURL = try c.decodeIfPresent(String.self, forKey: .baseURL) ?? Self.defaultBaseURL
+        projectName = try c.decodeIfPresent(String.self, forKey: .projectName)
+        organizationId = try c.decodeIfPresent(String.self, forKey: .organizationId)
+        shortcutKeyCode = try c.decodeIfPresent(UInt32.self, forKey: .shortcutKeyCode)
+        shortcutModifiers = try c.decodeIfPresent(UInt32.self, forKey: .shortcutModifiers)
+        defaultAddEnvironment = try c.decodeIfPresent(String.self, forKey: .defaultAddEnvironment)
+        // Older configs predate this field — assume Infisical to preserve behaviour.
+        storeBackend = try c.decodeIfPresent(String.self, forKey: .storeBackend) ?? "infisical"
+        iCloudSyncEnabled = try c.decodeIfPresent(Bool.self, forKey: .iCloudSyncEnabled) ?? false
     }
 
     public var dashboardURL: String {
@@ -119,5 +158,32 @@ public struct AppConfiguration: Codable, Equatable {
         let url = configFileURL
         try? FileManager.default.removeItem(at: url)
         UserDefaults.standard.removeObject(forKey: legacyUserDefaultsKey)
+    }
+
+    /// True when the local backend is selected.
+    public var isLocalBackend: Bool { storeBackend == SecretStoreBackendID.local }
+
+    /// Default config for a freshly bootstrapped local backend.
+    public static func defaultLocal() -> AppConfiguration {
+        AppConfiguration(
+            projectId: KeychainSecretStore.localProjectId,
+            environment: KeychainSecretStore.defaultEnvironments.first ?? defaultEnvironment,
+            secretPath: defaultSecretPath,
+            baseURL: defaultBaseURL,
+            projectName: "Local",
+            storeBackend: SecretStoreBackendID.local
+        )
+    }
+}
+
+/// Build the active `SecretStore` from a configuration. Call sites that previously
+/// reached for `InfisicalCLIService` directly should go through this so the local
+/// backend takes over when configured.
+public enum SecretStoreFactory {
+    public static func make(for config: AppConfiguration) -> SecretStore {
+        if config.isLocalBackend {
+            return KeychainSecretStore()
+        }
+        return InfisicalSecretStore(baseURL: config.baseURL)
     }
 }
