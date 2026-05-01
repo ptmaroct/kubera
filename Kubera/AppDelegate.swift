@@ -369,7 +369,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate, NSSear
             let view = AddSecretView(viewModel: viewModel) { [weak self] in
                 self?.addSecretWindow?.close()
             }
-            addSecretWindow = makeStyledWindow(view: view, width: 480, height: 720)
+            addSecretWindow = makeStyledWindow(view: view, width: 500, height: 700)
         }
         addSecretWindow?.makeKeyAndOrderFront(nil)
         NSApp.activate(ignoringOtherApps: true)

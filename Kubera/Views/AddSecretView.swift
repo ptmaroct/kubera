@@ -17,9 +17,11 @@ struct AddSecretView: View {
         ZStack {
             VisualEffectBlur(material: .hudWindow, blendingMode: .behindWindow)
                 .ignoresSafeArea()
+            Color.vault.bg.opacity(0.72)
+                .ignoresSafeArea()
             formContent
         }
-        .frame(width: 480, height: 720)
+        .frame(width: 500, height: 700)
         .preferredColorScheme(.dark)
         .onAppear {
             Task { await addVM.loadInitialData() }
@@ -41,15 +43,15 @@ struct AddSecretView: View {
             }
             .padding(.horizontal, 28)
             .padding(.top, 24)
-            .padding(.bottom, 16)
+            .padding(.bottom, 14)
 
-            VStack(spacing: 14) {
+            VStack(spacing: 12) {
                 contextRow
 
                 Rectangle()
                     .fill(Color.vault.border)
                     .frame(height: 1)
-                    .padding(.vertical, 2)
+                    .padding(.vertical, 1)
 
                 VaultTextField(label: "Secret Name", text: $addVM.key, isMonospaced: true, placeholder: "e.g. API_KEY")
                 VaultTextField(label: "Secret Value", text: $addVM.value, isSecure: true, placeholder: "Enter value")
@@ -68,7 +70,7 @@ struct AddSecretView: View {
                 tagSection
             }
             .padding(.horizontal, 28)
-            .padding(.bottom, 18)
+            .padding(.bottom, 14)
 
             if let error = addVM.errorMessage {
                 HStack(spacing: 6) {
@@ -95,24 +97,27 @@ struct AddSecretView: View {
     private var contextRow: some View {
         formCard {
             VStack(spacing: 12) {
-                selectionRow(icon: "folder.fill", label: "Project") {
-                    projectPicker
-                }
+                HStack(alignment: .center, spacing: 12) {
+                    selectionRow(icon: "folder.fill", label: "Project") {
+                        projectPicker
+                    }
 
-                if !addVM.environments.isEmpty {
-                    Divider().opacity(0.18)
+                    if !addVM.environments.isEmpty {
+                        Rectangle()
+                            .fill(Color.white.opacity(0.08))
+                            .frame(width: 1, height: 28)
 
-                    VStack(alignment: .leading, spacing: 10) {
                         selectionRow(icon: "leaf.fill", label: "Environment") {
                             Text(environmentSummary)
                                 .font(.system(size: 12, weight: .medium))
                                 .foregroundColor(Color.vault.textSecondary)
                                 .lineLimit(1)
                         }
-
-                        environmentChips
-                            .padding(.leading, 28)
                     }
+                }
+
+                if !addVM.environments.isEmpty {
+                    environmentChips
                 }
             }
         }
@@ -206,12 +211,12 @@ struct AddSecretView: View {
     private func formCard<Content: View>(@ViewBuilder content: () -> Content) -> some View {
         content()
             .frame(maxWidth: .infinity, alignment: .topLeading)
-            .padding(14)
-            .background(.ultraThinMaterial.opacity(0.55))
+            .padding(12)
+            .background(Color.vault.surface.opacity(0.72))
             .cornerRadius(10)
             .overlay(
                 RoundedRectangle(cornerRadius: 10)
-                    .stroke(Color.white.opacity(0.06), lineWidth: 1)
+                    .stroke(Color.white.opacity(0.08), lineWidth: 1)
             )
     }
 
@@ -233,7 +238,7 @@ struct AddSecretView: View {
             trailing()
                 .layoutPriority(1)
         }
-        .frame(minHeight: 30)
+        .frame(minHeight: 28)
     }
 
     @ViewBuilder

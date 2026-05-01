@@ -21,6 +21,8 @@ struct SecretListView: View {
         ZStack {
             VisualEffectBlur(material: .hudWindow, blendingMode: .behindWindow)
                 .ignoresSafeArea()
+            Color.vault.bg.opacity(0.72)
+                .ignoresSafeArea()
 
             VStack(spacing: 0) {
                 headerSection
@@ -132,39 +134,33 @@ struct SecretListView: View {
 
     private var filterPanel: some View {
         glassCard {
-            VStack(spacing: 12) {
+            VStack(spacing: 10) {
                 searchField
 
                 Divider().opacity(0.2)
 
-                HStack(alignment: .top, spacing: 16) {
-                    filterRow(icon: "folder.fill", label: "Project") {
+                HStack(alignment: .center, spacing: 10) {
+                    HStack(spacing: 7) {
+                        Image(systemName: "folder.fill")
+                            .font(.system(size: 12))
+                            .foregroundColor(Color.vault.accent)
                         projectFilterMenu
                     }
+                    .frame(width: 230, alignment: .leading)
 
-                    Divider().opacity(0.2)
+                    Rectangle()
+                        .fill(Color.white.opacity(0.08))
+                        .frame(width: 1, height: 28)
 
-                    filterRow(icon: "leaf.fill", label: "Environment") {
+                    HStack(spacing: 8) {
+                        Image(systemName: "leaf.fill")
+                            .font(.system(size: 12))
+                            .foregroundColor(Color.vault.accent)
                         environmentTabs
                     }
-                }
+                    .frame(maxWidth: .infinity, alignment: .leading)
 
-                if listVM.activeFilterCount > 0 || !listVM.searchText.isEmpty {
-                    Divider().opacity(0.2)
-
-                    Button {
-                        listVM.clearFilters()
-                    } label: {
-                        HStack(spacing: 5) {
-                            Image(systemName: "xmark.circle.fill")
-                                .font(.system(size: 10))
-                            Text("Clear filters")
-                                .font(.system(size: 11, weight: .medium))
-                        }
-                        .foregroundColor(.white.opacity(0.42))
-                    }
-                    .buttonStyle(.plain)
-                    .frame(maxWidth: .infinity, alignment: .trailing)
+                    clearFilterButton
                 }
             }
         }
@@ -193,7 +189,7 @@ struct SecretListView: View {
             }
         }
         .padding(.horizontal, 12)
-        .padding(.vertical, 8)
+        .padding(.vertical, 7)
         .background(Color.vault.bg.opacity(0.7))
         .cornerRadius(8)
         .overlay(
@@ -263,6 +259,20 @@ struct SecretListView: View {
         }
     }
 
+    private var clearFilterButton: some View {
+        Button {
+            listVM.clearFilters()
+        } label: {
+            Image(systemName: "xmark.circle.fill")
+                .font(.system(size: 13, weight: .semibold))
+                .foregroundColor(.white.opacity(0.32))
+                .frame(width: 24, height: 24)
+        }
+        .buttonStyle(.plain)
+        .help("Clear filters")
+        .opacity(listVM.activeFilterCount > 0 || !listVM.searchText.isEmpty ? 1 : 0)
+    }
+
     private var summaryProjectText: String {
         selectedProjectName == "All Projects" ? "All Projects" : selectedProjectName
     }
@@ -280,12 +290,12 @@ struct SecretListView: View {
     private func glassCard<Content: View>(@ViewBuilder content: () -> Content) -> some View {
         content()
             .frame(maxWidth: .infinity, alignment: .topLeading)
-            .padding(16)
-            .background(.ultraThinMaterial.opacity(0.6))
+            .padding(12)
+            .background(Color.vault.surface.opacity(0.72))
             .cornerRadius(10)
             .overlay(
                 RoundedRectangle(cornerRadius: 10)
-                    .stroke(.white.opacity(0.06), lineWidth: 1)
+                    .stroke(.white.opacity(0.08), lineWidth: 1)
             )
     }
 
@@ -316,7 +326,7 @@ struct SecretListView: View {
                 .foregroundColor(.white.opacity(0.95))
                 .lineLimit(1)
                 .truncationMode(.tail)
-                .frame(minWidth: 120, maxWidth: 190, alignment: .leading)
+                .frame(minWidth: 120, maxWidth: 170, alignment: .leading)
 
             Image(systemName: "chevron.up.chevron.down")
                 .font(.system(size: 9, weight: .semibold))
@@ -344,8 +354,8 @@ struct SecretListView: View {
                     .opacity(0.75)
             }
             .foregroundColor(isSelected ? Color.vault.bg : accent)
-            .padding(.horizontal, 9)
-            .padding(.vertical, 5)
+            .padding(.horizontal, 8)
+            .padding(.vertical, 4)
             .background(isSelected ? accent : accent.opacity(0.14))
             .cornerRadius(6)
             .overlay(
