@@ -1,4 +1,5 @@
 import SwiftUI
+import KuberaCore
 import Carbon
 
 struct SettingsView: View {
@@ -9,6 +10,8 @@ struct SettingsView: View {
     @State private var selectedProject: InfisicalProject?
     @State private var selectedEnvironment: InfisicalEnvironment?
     @State private var allEnvironmentsSelected: Bool = false
+    @State private var allProjectsSelected: Bool = false
+    @State private var defaultAddEnvSlug: String?
     @State private var secretPath: String = "/"
     @State private var isLoading = true
     @State private var statusMessage: String?
@@ -71,8 +74,8 @@ struct SettingsView: View {
                         .padding(.top, 8)
                     Spacer()
                 } else {
-                    ScrollView(.vertical, showsIndicators: false) {
-                        VStack(spacing: 16) {
+                    HStack(alignment: .top, spacing: 14) {
+                        VStack(spacing: 14) {
                             // Project & Environment card
                             glassCard {
                                 VStack(spacing: 14) {
@@ -81,29 +84,56 @@ struct SettingsView: View {
                                         label: "Project"
                                     ) {
                                         Menu {
+                                            Button {
+                                                allProjectsSelected = true
+                                                selectedProject = nil
+                                                selectedEnvironment = nil
+                                                allEnvironmentsSelected = true
+                                            } label: {
+                                                HStack {
+                                                    Text("All Projects")
+                                                    if allProjectsSelected {
+                                                        Image(systemName: "checkmark")
+                                                    }
+                                                }
+                                            }
+                                            Divider()
                                             ForEach(projects) { project in
                                                 Button {
+                                                    allProjectsSelected = false
                                                     selectedProject = project
                                                     selectedEnvironment = project.environments.first
                                                     allEnvironmentsSelected = false
                                                 } label: {
                                                     HStack {
                                                         Text(project.name)
-                                                        if selectedProject?.id == project.id {
+                                                        if !allProjectsSelected && selectedProject?.id == project.id {
                                                             Image(systemName: "checkmark")
                                                         }
                                                     }
                                                 }
                                             }
                                         } label: {
-                                            HStack(spacing: 4) {
-                                                Text(selectedProject?.name ?? "Select...")
-                                                    .font(.system(size: 13))
-                                                    .foregroundColor(.white.opacity(0.85))
+                                            HStack(spacing: 6) {
+                                                Text(allProjectsSelected
+                                                     ? "All Projects"
+                                                     : (selectedProject?.name ?? "Select..."))
+                                                    .font(.system(size: 13, weight: .medium))
+                                                    .foregroundColor(.white.opacity(0.95))
                                                 Image(systemName: "chevron.up.chevron.down")
-                                                    .font(.system(size: 8))
-                                                    .foregroundColor(.white.opacity(0.4))
+                                                    .font(.system(size: 9, weight: .semibold))
+                                                    .foregroundColor(Color.vault.accent.opacity(0.8))
                                             }
+                                            .padding(.horizontal, 10)
+                                            .padding(.vertical, 5)
+                                            .background(
+                                                RoundedRectangle(cornerRadius: 6)
+                                                    .fill(Color.white.opacity(0.05))
+                                                    .overlay(
+                                                        RoundedRectangle(cornerRadius: 6)
+                                                            .stroke(Color.white.opacity(0.08), lineWidth: 1)
+                                                    )
+                                            )
                                         }
                                         .menuStyle(.borderlessButton)
                                         .menuIndicator(.hidden)
@@ -148,6 +178,43 @@ struct SettingsView: View {
                                                     Text(allEnvironmentsSelected
                                                          ? "All Environments"
                                                          : (selectedEnvironment?.name ?? "Select..."))
+                                                        .font(.system(size: 13))
+                                                        .foregroundColor(.white.opacity(0.85))
+                                                    Image(systemName: "chevron.up.chevron.down")
+                                                        .font(.system(size: 8))
+                                                        .foregroundColor(.white.opacity(0.4))
+                                                }
+                                            }
+                                            .menuStyle(.borderlessButton)
+                                            .menuIndicator(.hidden)
+                                            .fixedSize()
+                                        }
+                                    }
+
+                                    Divider().opacity(0.2)
+
+                                    settingsRow(
+                                        icon: "plus.square.on.square",
+                                        label: "Default for Add"
+                                    ) {
+                                        if let envs = selectedProject?.environments, !envs.isEmpty {
+                                            Menu {
+                                                ForEach(envs) { env in
+                                                    Button {
+                                                        defaultAddEnvSlug = env.slug
+                                                    } label: {
+                                                        HStack {
+                                                            Text(env.name)
+                                                            if defaultAddEnvSlug == env.slug {
+                                                                Image(systemName: "checkmark")
+                                                            }
+                                                        }
+                                                    }
+                                                }
+                                            } label: {
+                                                HStack(spacing: 4) {
+                                                    Text(envs.first(where: { $0.slug == defaultAddEnvSlug })?.name
+                                                         ?? envs.first?.name ?? "Select...")
                                                         .font(.system(size: 13))
                                                         .foregroundColor(.white.opacity(0.85))
                                                     Image(systemName: "chevron.up.chevron.down")
@@ -294,7 +361,10 @@ struct SettingsView: View {
                                     }
                                 }
                             }
+                            Spacer(minLength: 0)
+                        }
 
+                        VStack(spacing: 14) {
                             // Expiry reminders card
                             glassCard {
                                 VStack(spacing: 12) {
@@ -442,9 +512,10 @@ struct SettingsView: View {
                                     .frame(maxWidth: .infinity, alignment: .center)
                                 }
                             }
+                            Spacer(minLength: 0)
                         }
-                        .padding(.horizontal, 24)
                     }
+                    .padding(.horizontal, 20)
 
                     Spacer(minLength: 8)
                 }
@@ -476,7 +547,7 @@ struct SettingsView: View {
                 .padding(.bottom, 20)
             }
         }
-        .frame(width: 520, height: 760)
+        .frame(width: 820, height: 640)
         .preferredColorScheme(.dark)
         .onAppear {
             loadData()
@@ -596,7 +667,15 @@ struct SettingsView: View {
 
     private func applyConfig() {
         if let config = AppConfiguration.load() {
-            selectedProject = projects.first(where: { $0.id == config.projectId })
+            if config.isAllProjects {
+                allProjectsSelected = true
+                selectedProject = nil
+                selectedEnvironment = nil
+                allEnvironmentsSelected = true
+            } else {
+                allProjectsSelected = false
+                selectedProject = projects.first(where: { $0.id == config.projectId })
+            }
             if let project = selectedProject {
                 if config.isAllEnvironments {
                     allEnvironmentsSelected = true
@@ -607,6 +686,7 @@ struct SettingsView: View {
                 }
             }
             secretPath = config.secretPath
+            defaultAddEnvSlug = config.defaultAddEnvironment ?? selectedProject?.environments.first?.slug
         }
     }
 
@@ -660,8 +740,17 @@ struct SettingsView: View {
     // MARK: - Save
 
     private func save() {
-        guard let project = selectedProject else { return }
-        guard allEnvironmentsSelected || selectedEnvironment != nil else { return }
+        let projectId: String
+        let projectName: String?
+        if allProjectsSelected {
+            projectId = AppConfiguration.allProjectsSentinel
+            projectName = "All Projects"
+        } else {
+            guard let project = selectedProject else { return }
+            guard allEnvironmentsSelected || selectedEnvironment != nil else { return }
+            projectId = project.id
+            projectName = project.name
+        }
 
         let envSlug: String = allEnvironmentsSelected
             ? AppConfiguration.allEnvironmentsSentinel
@@ -669,14 +758,15 @@ struct SettingsView: View {
 
         let existingConfig = AppConfiguration.load()
         let config = AppConfiguration(
-            projectId: project.id,
+            projectId: projectId,
             environment: envSlug,
             secretPath: secretPath,
             baseURL: existingConfig?.baseURL ?? AppConfiguration.defaultBaseURL,
-            projectName: project.name,
+            projectName: projectName,
             organizationId: existingConfig?.organizationId,
             shortcutKeyCode: shortcutKeyCode,
-            shortcutModifiers: shortcutModifiers
+            shortcutModifiers: shortcutModifiers,
+            defaultAddEnvironment: defaultAddEnvSlug
         )
         config.save()
 

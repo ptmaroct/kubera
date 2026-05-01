@@ -1,4 +1,5 @@
 import SwiftUI
+import KuberaCore
 import AppKit
 
 struct AddSecretView: View {
@@ -532,7 +533,7 @@ struct AddSecretView: View {
                 }
                 .padding(.horizontal, 20)
                 .padding(.vertical, 8)
-                .foregroundColor(buttonState == .success ? .white : Color.vault.bg)
+                .foregroundColor(.white)
                 .background(buttonState == .success ? Color.vault.success : Color.vault.accent)
                 .cornerRadius(8)
                 .overlay(

@@ -1,4 +1,5 @@
 import Foundation
+import KuberaCore
 
 @MainActor
 final class OnboardingViewModel: ObservableObject {

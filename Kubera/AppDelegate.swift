@@ -1,8 +1,9 @@
 import AppKit
+import KuberaCore
 import SwiftUI
 
 @MainActor
-final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
+final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate, NSSearchFieldDelegate {
     private var statusItem: NSStatusItem!
     private var menu: NSMenu!
     private let viewModel = AppViewModel()
@@ -77,6 +78,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         searchField.sendsWholeSearchString = false
         searchField.target = self
         searchField.action = #selector(searchFieldChanged(_:))
+        // delegate fires controlTextDidChange synchronously per keystroke,
+        // bypassing NSSearchField's internal action throttle so the result
+        // list updates without the ~500ms lag.
+        searchField.delegate = self
         searchField.focusRingType = .none
 
         let searchContainer = NSView(frame: NSRect(x: 0, y: 0, width: 260, height: 36))
@@ -300,6 +305,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         updateSecretItems()
     }
 
+    func controlTextDidChange(_ obj: Notification) {
+        guard let field = obj.object as? NSSearchField else { return }
+        viewModel.searchText = field.stringValue
+        updateSecretItems()
+    }
+
     @objc private func copySecret(_ sender: NSMenuItem) {
         let index = sender.tag
         let displaySecrets = viewModel.menubarSecrets
@@ -373,7 +384,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
             let view = SettingsView(viewModel: viewModel) { [weak self] in
                 self?.settingsWindow?.close()
             }
-            settingsWindow = makeStyledWindow(view: view, width: 520, height: 760)
+            settingsWindow = makeStyledWindow(view: view, width: 820, height: 640)
         }
         settingsWindow?.makeKeyAndOrderFront(nil)
         NSApp.activate(ignoringOtherApps: true)

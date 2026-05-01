@@ -1,4 +1,5 @@
 import Foundation
+import KuberaCore
 import AppKit
 
 @MainActor
@@ -75,29 +76,54 @@ final class AppViewModel: ObservableObject {
         }
         errorMessage = nil
 
-        let envSlugs: [String]
-        if config.isAllEnvironments {
-            envSlugs = await resolveProjectEnvSlugs(projectId: config.projectId,
-                                                   baseURL: config.baseURL)
+        // Resolve which (project, env) pairs to fetch. All-projects mode fans out
+        // across every cached project; otherwise we use the single configured project.
+        var fetchTargets: [(projectId: String, envSlugs: [String])] = []
+        if config.isAllProjects {
+            let projects = ProjectCache.shared.projects.isEmpty
+                ? await ProjectCache.shared.fetchProjects()
+                : ProjectCache.shared.projects
+            for project in projects {
+                let slugs = project.environments.map { $0.slug }
+                guard !slugs.isEmpty else { continue }
+                fetchTargets.append((project.id, slugs))
+            }
+            if fetchTargets.isEmpty {
+                errorMessage = "No projects available"
+                isLoading = false
+                return
+            }
+        } else if config.isAllEnvironments {
+            let envSlugs = await resolveProjectEnvSlugs(projectId: config.projectId,
+                                                        baseURL: config.baseURL)
             if envSlugs.isEmpty {
                 errorMessage = "Project has no environments"
                 isLoading = false
                 return
             }
+            fetchTargets.append((config.projectId, envSlugs))
         } else {
-            envSlugs = [config.environment]
+            fetchTargets.append((config.projectId, [config.environment]))
         }
 
         do {
-            let merged = try await fetchSecrets(
-                envSlugs: envSlugs,
-                projectId: config.projectId,
-                secretPath: config.secretPath,
-                baseURL: config.baseURL
-            )
+            var merged: [SecretItem] = []
+            for target in fetchTargets {
+                let items = try await fetchSecrets(
+                    envSlugs: target.envSlugs,
+                    projectId: target.projectId,
+                    secretPath: config.secretPath,
+                    baseURL: config.baseURL
+                )
+                merged.append(contentsOf: items)
+            }
             secrets = merged
             cacheSecrets(merged)
-            for env in envSlugs {
+            // Reconcile expiry notifications per (env) bucket. Across multiple
+            // projects the same env slug aggregates — fine for notification
+            // dedup since reconcile keys on secret key + env.
+            let allEnvs = Set(fetchTargets.flatMap { $0.envSlugs })
+            for env in allEnvs {
                 let envSecrets = merged.filter { $0.environment == env }
                 ExpiryNotificationScheduler.shared.reconcile(
                     secrets: envSecrets, environment: env

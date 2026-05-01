@@ -1,46 +1,58 @@
 import Foundation
 
 /// Tag attached to a secret
-struct SecretTag: Codable, Identifiable, Hashable {
-    let id: String
-    let slug: String
-    let name: String?
-    let color: String?
+public struct SecretTag: Codable, Identifiable, Hashable {
+    public let id: String
+    public let slug: String
+    public let name: String?
+    public let color: String?
 
-    var displayName: String { name ?? slug }
+    public var displayName: String { name ?? slug }
+
+    public init(id: String, slug: String, name: String?, color: String?) {
+        self.id = id
+        self.slug = slug
+        self.name = name
+        self.color = color
+    }
 }
 
 /// Custom metadata key/value entry on an Infisical secret.
 /// Sent and received as `secretMetadata: [{ key, value }]` on /api/v3/secrets/raw.
-struct SecretMetadataEntry: Codable, Hashable {
-    let key: String
-    let value: String
+public struct SecretMetadataEntry: Codable, Hashable {
+    public let key: String
+    public let value: String
+
+    public init(key: String, value: String) {
+        self.key = key
+        self.value = value
+    }
 }
 
 /// Well-known metadata keys used by Kubera.
-enum SecretMetadataKey {
-    static let expiryDate = "expiryDate"  // ISO-8601 date: YYYY-MM-DD
-    static let serviceUrl = "serviceUrl"  // absolute URL of the issuing service's keys page
+public enum SecretMetadataKey {
+    public static let expiryDate = "expiryDate"  // ISO-8601 date: YYYY-MM-DD
+    public static let serviceUrl = "serviceUrl"  // absolute URL of the issuing service's keys page
 }
 
 /// Represents a single secret from Infisical REST API.
 /// GET /api/v3/secrets/raw returns these fields (among others).
-struct SecretItem: Codable, Identifiable, Hashable {
-    let id: String
-    let key: String
-    let value: String
-    let type: String?
-    let comment: String?
-    let version: Int?
-    let tags: [SecretTag]?
-    let secretMetadata: [SecretMetadataEntry]?
-    let createdAt: String?
-    let updatedAt: String?
+public struct SecretItem: Codable, Identifiable, Hashable {
+    public let id: String
+    public let key: String
+    public var value: String
+    public let type: String?
+    public let comment: String?
+    public let version: Int?
+    public let tags: [SecretTag]?
+    public let secretMetadata: [SecretMetadataEntry]?
+    public let createdAt: String?
+    public let updatedAt: String?
 
     /// Environment slug this secret was fetched from. Populated client-side after
     /// fetch (not part of the API response) so the same key can appear in multiple
     /// envs when "All Environments" mode is active.
-    var environment: String?
+    public var environment: String?
 
     enum CodingKeys: String, CodingKey {
         case id = "_id"
@@ -48,10 +60,13 @@ struct SecretItem: Codable, Identifiable, Hashable {
         case value = "secretValue"
         case type
         case comment = "secretComment"
-        case version, tags, secretMetadata, createdAt, updatedAt
+        // `environment` round-trips through the local cache so badges render
+        // instantly on cold start. The Infisical API never sets it; the per-env
+        // fetcher stamps it client-side after the response decodes.
+        case version, tags, secretMetadata, createdAt, updatedAt, environment
     }
 
-    init(
+    public init(
         id: String = UUID().uuidString,
         key: String,
         value: String,
@@ -84,14 +99,14 @@ struct SecretItem: Codable, Identifiable, Hashable {
     }
 
     /// Parsed expiry date (calendar day in current TZ) — nil if absent or unparseable.
-    var expiryDate: Date? {
+    public var expiryDate: Date? {
         guard let raw = metadataValue(forKey: SecretMetadataKey.expiryDate),
               !raw.isEmpty else { return nil }
         return SecretMetadataDateFormatter.shared.date(from: raw)
     }
 
     /// Service-keys URL — nil if absent or unparseable.
-    var serviceURL: URL? {
+    public var serviceURL: URL? {
         guard let raw = metadataValue(forKey: SecretMetadataKey.serviceUrl),
               !raw.isEmpty else { return nil }
         return URL(string: raw)
@@ -99,8 +114,8 @@ struct SecretItem: Codable, Identifiable, Hashable {
 }
 
 /// Encode/decode `expiryDate` metadata values as ISO-8601 calendar days.
-enum SecretMetadataDateFormatter {
-    static let shared: DateFormatter = {
+public enum SecretMetadataDateFormatter {
+    public static let shared: DateFormatter = {
         let f = DateFormatter()
         f.calendar = Calendar(identifier: .gregorian)
         f.locale = Locale(identifier: "en_US_POSIX")
@@ -109,15 +124,15 @@ enum SecretMetadataDateFormatter {
         return f
     }()
 
-    static func string(from date: Date) -> String { shared.string(from: date) }
-    static func date(from string: String) -> Date? { shared.date(from: string) }
+    public static func string(from date: Date) -> String { shared.string(from: date) }
+    public static func date(from string: String) -> Date? { shared.date(from: string) }
 }
 
 /// Build the metadata array for a create/update API call.
 /// Returns array form expected by Infisical: `[{ "key": ..., "value": ... }]`.
 /// nil/empty inputs are omitted; if all inputs are nil/empty, returns an empty array
 /// (caller should drop the field entirely in that case to avoid clearing existing metadata).
-func buildSecretMetadataPayload(expiryDate: Date?, serviceURL: String?) -> [[String: String]] {
+public func buildSecretMetadataPayload(expiryDate: Date?, serviceURL: String?) -> [[String: String]] {
     var out: [[String: String]] = []
     if let date = expiryDate {
         out.append(["key": SecretMetadataKey.expiryDate,

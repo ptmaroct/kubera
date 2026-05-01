@@ -113,6 +113,31 @@ trap 'rm -rf "$tmpdir"' EXIT
 xattr -dr com.apple.quarantine "$dest" 2>/dev/null || true
 ok "Installed Kubera.app to $INSTALL_DIR"
 
+# -- CLI symlink ------------------------------------------------------------
+# The .app bundle ships a `kubera` CLI binary at Contents/Resources/kubera.
+# Symlink it onto $PATH so users get `kubera ls`, `kubera get`, etc.
+cli_src="$dest/Contents/Resources/kubera"
+if [[ -x "$cli_src" ]]; then
+  cli_dest=""
+  for candidate in "/usr/local/bin" "$HOME/.local/bin"; do
+    if mkdir -p "$candidate" 2>/dev/null && [[ -w "$candidate" ]]; then
+      cli_dest="$candidate/kubera"
+      break
+    fi
+  done
+  if [[ -n "$cli_dest" ]]; then
+    ln -sf "$cli_src" "$cli_dest"
+    ok "Linked kubera CLI: $cli_dest"
+    case ":$PATH:" in
+      *":${cli_dest%/*}:"*) ;;
+      *) warn "Add ${cli_dest%/*} to your \$PATH to use 'kubera' from any shell." ;;
+    esac
+  else
+    warn "Could not write to /usr/local/bin or ~/.local/bin. Symlink manually:"
+    warn "  ln -sf \"$cli_src\" /usr/local/bin/kubera"
+  fi
+fi
+
 # -- Done -------------------------------------------------------------------
 echo
 bold "Done. Next steps:"

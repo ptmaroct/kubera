@@ -1,4 +1,5 @@
 import Foundation
+import KuberaCore
 
 /// In-memory cache for projects, tags, and org data.
 /// Shows cached data instantly, refreshes silently in background.

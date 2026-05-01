@@ -1,12 +1,12 @@
 import Foundation
 
-enum CLIError: LocalizedError {
+public enum CLIError: LocalizedError {
     case notInstalled
     case notLoggedIn
     case executionFailed(String)
     case parseError(String)
 
-    var errorDescription: String? {
+    public var errorDescription: String? {
         switch self {
         case .notInstalled:
             return "Infisical CLI is not installed. Install it with: brew install infisical"
@@ -20,7 +20,7 @@ enum CLIError: LocalizedError {
     }
 }
 
-struct InfisicalCLIService {
+public struct InfisicalCLIService {
 
     /// Find the infisical binary path
     private static func cliPath() -> String? {
@@ -34,7 +34,6 @@ struct InfisicalCLIService {
                 return path
             }
         }
-        // Try `which`
         if let result = try? runShell("/bin/zsh", arguments: ["-c", "which infisical"]),
            !result.isEmpty {
             return result.trimmingCharacters(in: .whitespacesAndNewlines)
@@ -42,25 +41,21 @@ struct InfisicalCLIService {
         return nil
     }
 
-    /// Check if CLI is installed
-    static func isInstalled() -> Bool {
+    public static func isInstalled() -> Bool {
         cliPath() != nil
     }
 
-    /// Check if user is logged in by running `infisical user get token`
-    static func isLoggedIn() async -> Bool {
+    public static func isLoggedIn() async -> Bool {
         guard let cli = cliPath() else { return false }
         do {
             let output = try runShell(cli, arguments: ["user", "get", "token"])
-            // If we get a token back, user is logged in
             return output.contains("Token:")
         } catch {
             return false
         }
     }
 
-    /// List all secrets as JSON using `infisical export`
-    static func listSecrets(environment: String, projectId: String, secretPath: String = "/") async throws -> [SecretItem] {
+    public static func listSecrets(environment: String, projectId: String, secretPath: String = "/") async throws -> [SecretItem] {
         guard let cli = cliPath() else { throw CLIError.notInstalled }
 
         var args = ["export", "--format=json", "--silent"]
@@ -77,25 +72,19 @@ struct InfisicalCLIService {
             throw CLIError.executionFailed(error.localizedDescription)
         }
 
-        guard !output.isEmpty else {
-            return []
-        }
-
-        // Parse JSON array
+        guard !output.isEmpty else { return [] }
         guard let data = output.data(using: .utf8) else {
             throw CLIError.parseError("Invalid UTF-8 output")
         }
 
         do {
-            let secrets = try JSONDecoder().decode([SecretItem].self, from: data)
-            return secrets
+            return try JSONDecoder().decode([SecretItem].self, from: data)
         } catch {
             throw CLIError.parseError(error.localizedDescription)
         }
     }
 
-    /// Create a new secret using `infisical secrets set`
-    static func createSecret(key: String, value: String, environment: String, projectId: String, secretPath: String = "/") async throws {
+    public static func createSecret(key: String, value: String, environment: String, projectId: String, secretPath: String = "/") async throws {
         guard let cli = cliPath() else { throw CLIError.notInstalled }
 
         var args = ["secrets", "set", "\(key)=\(value)"]
@@ -112,11 +101,9 @@ struct InfisicalCLIService {
         }
     }
 
-    /// Get the logged-in user's access token from CLI
-    static func getToken() -> String? {
+    public static func getToken() -> String? {
         guard let cli = cliPath() else { return nil }
         guard let output = try? runShell(cli, arguments: ["user", "get", "token"]) else { return nil }
-        // Parse "Token: <jwt>" from output
         for line in output.components(separatedBy: "\n") {
             if line.hasPrefix("Token:") {
                 return line.replacingOccurrences(of: "Token:", with: "").trimmingCharacters(in: .whitespaces)
@@ -125,8 +112,7 @@ struct InfisicalCLIService {
         return nil
     }
 
-    /// Fetch organizations for the logged-in user via API
-    static func fetchOrganizations(baseURL: String = "https://app.infisical.com") async throws -> [InfisicalOrg] {
+    public static func fetchOrganizations(baseURL: String = "https://app.infisical.com") async throws -> [InfisicalOrg] {
         guard let token = getToken() else { throw CLIError.notLoggedIn }
         let url = URL(string: "\(baseURL)/api/v2/users/me/organizations")!
         var request = URLRequest(url: url)
@@ -136,8 +122,7 @@ struct InfisicalCLIService {
         return response.organizations
     }
 
-    /// Fetch workspaces (projects) for an organization via API
-    static func fetchProjects(orgId: String, baseURL: String = "https://app.infisical.com") async throws -> [InfisicalProject] {
+    public static func fetchProjects(orgId: String, baseURL: String = "https://app.infisical.com") async throws -> [InfisicalProject] {
         guard let token = getToken() else { throw CLIError.notLoggedIn }
         let url = URL(string: "\(baseURL)/api/v2/organizations/\(orgId)/workspaces")!
         var request = URLRequest(url: url)
@@ -147,8 +132,7 @@ struct InfisicalCLIService {
         return response.workspaces
     }
 
-    /// Fetch tags for a workspace (project) via API (v1 endpoint)
-    static func fetchTags(projectId: String, baseURL: String = "https://app.infisical.com") async throws -> [InfisicalTag] {
+    public static func fetchTags(projectId: String, baseURL: String = "https://app.infisical.com") async throws -> [InfisicalTag] {
         guard let token = getToken() else { throw CLIError.notLoggedIn }
         let url = URL(string: "\(baseURL)/api/v1/workspace/\(projectId)/tags")!
         var request = URLRequest(url: url)
@@ -167,8 +151,7 @@ struct InfisicalCLIService {
         return decoded.workspaceTags
     }
 
-    /// Create a new tag in a workspace via API (v1 endpoint)
-    static func createTag(name: String, projectId: String, color: String = "#F5A524", baseURL: String = "https://app.infisical.com") async throws -> InfisicalTag {
+    public static func createTag(name: String, projectId: String, color: String = "#F5A524", baseURL: String = "https://app.infisical.com") async throws -> InfisicalTag {
         guard let token = getToken() else { throw CLIError.notLoggedIn }
         let url = URL(string: "\(baseURL)/api/v1/workspace/\(projectId)/tags")!
         var request = URLRequest(url: url)
@@ -196,7 +179,6 @@ struct InfisicalCLIService {
             throw CLIError.executionFailed("Failed to create tag")
         }
 
-        // Parse the created tag from response
         struct CreateTagResponse: Codable {
             let workspaceTag: InfisicalTag
         }
@@ -204,8 +186,7 @@ struct InfisicalCLIService {
         return tagResponse.workspaceTag
     }
 
-    /// List all secrets via Infisical REST API (returns rich metadata: version, tags, timestamps)
-    static func listSecretsViaAPI(
+    public static func listSecretsViaAPI(
         environment: String,
         projectId: String,
         secretPath: String = "/",
@@ -244,7 +225,7 @@ struct InfisicalCLIService {
     /// array. Pass `metadataExplicit: true` (default) to overwrite metadata even when
     /// both are nil — that lets callers clear the values. Pass `false` to leave
     /// existing metadata untouched.
-    static func updateSecret(
+    public static func updateSecret(
         name: String,
         value: String,
         comment: String = "",
@@ -292,8 +273,7 @@ struct InfisicalCLIService {
         }
     }
 
-    /// Delete a secret via Infisical REST API
-    static func deleteSecret(
+    public static func deleteSecret(
         name: String,
         environment: String,
         projectId: String,
@@ -327,7 +307,7 @@ struct InfisicalCLIService {
     }
 
     /// Create a new secret via Infisical REST API (supports comment, tags, and metadata).
-    static func createSecretViaAPI(
+    public static func createSecretViaAPI(
         name: String,
         value: String,
         comment: String = "",
@@ -364,7 +344,6 @@ struct InfisicalCLIService {
         let (data, response) = try await URLSession.shared.data(for: request)
 
         if let httpResponse = response as? HTTPURLResponse, httpResponse.statusCode >= 400 {
-            // Try to parse error message from response
             if let errorJson = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
                let message = errorJson["message"] as? String {
                 throw CLIError.executionFailed(message)
@@ -385,7 +364,6 @@ struct InfisicalCLIService {
         process.standardOutput = pipe
         process.standardError = pipe
 
-        // Inherit PATH so CLI can find its dependencies
         var env = ProcessInfo.processInfo.environment
         if env["PATH"] == nil {
             env["PATH"] = "/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin"

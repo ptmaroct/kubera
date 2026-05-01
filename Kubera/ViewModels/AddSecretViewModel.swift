@@ -1,4 +1,5 @@
 import Foundation
+import KuberaCore
 
 @MainActor
 final class AddSecretViewModel: ObservableObject {
@@ -103,8 +104,14 @@ final class AddSecretViewModel: ObservableObject {
         selectedProject = projects.first(where: { $0.id == config.projectId })
         if let project = selectedProject {
             environments = project.environments
-            if let env = environments.first(where: { $0.slug == config.environment }) {
+            // Prefer the saved default-add env, then the configured menu env,
+            // and fall back to the project's first env so the form is never
+            // stuck without a selection (esp. in All-Environments mode).
+            let preferred = config.defaultAddEnvironment ?? config.environment
+            if let env = environments.first(where: { $0.slug == preferred }) {
                 selectedEnvironmentIds = [env.id]
+            } else if let first = environments.first {
+                selectedEnvironmentIds = [first.id]
             }
         }
     }
@@ -122,7 +129,10 @@ final class AddSecretViewModel: ObservableObject {
         }
 
         environments = project.environments
-        if let first = environments.first {
+        let defaultSlug = AppConfiguration.load()?.defaultAddEnvironment
+        if let preferred = defaultSlug, let env = environments.first(where: { $0.slug == preferred }) {
+            selectedEnvironmentIds = [env.id]
+        } else if let first = environments.first {
             selectedEnvironmentIds = [first.id]
         }
         selectedTagIds = []
